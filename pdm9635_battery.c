@@ -20,17 +20,17 @@ int32_t jrd_qpnp_vadc_read(enum qpnp_vadc_channels channel,struct qpnp_vadc_resu
 //*************************************************
 // все смещения вычислены по исходному дизассемблированному тексту
 
-struct pdm9635_battery_chip {
+struct pmd9635_battery_chip {
   int alarm_wakeup_arg;  //0    0 battery_core_interface*
   int (*timer_resume_proc)(int);  //4
   int (*timer_suspend_proc)(int);  //8
   int (*x_timer_suspend_proc)(int,int*);  //12
   void (*alarm_wakeup_proc)(int);  //16
   char* bname;  //20
-  struct pdm9635_battery_chip* thisptr;    //24
-  int (*get_vbat_proc)(struct pdm9635_battery_chip*, int*);  //28
+  struct pmd9635_battery_chip* thisptr;    //24
+  int (*get_vbat_proc)(struct pmd9635_battery_chip*, int*);  //28
   int x32;
-  int (*get_vntc_proc)(struct pdm9635_battery_chip*, int*);  //36
+  int (*get_vntc_proc)(struct pmd9635_battery_chip*, int*);  //36
   int x40;
   int x44;
   int x48;
@@ -49,7 +49,7 @@ struct pdm9635_battery_chip {
 //***********************************
 void pmd9635_battery_alarm_wakeup(void* private) {
 
-struct pdm9635_battery_chip* b9635data=private;
+struct pmd9635_battery_chip* b9635data=private;
   
 if (b9635data->alarm_wakeup_proc != 0) b9635data->alarm_wakeup_proc(b9635data->alarm_wakeup_arg);
 }
@@ -57,10 +57,10 @@ if (b9635data->alarm_wakeup_proc != 0) b9635data->alarm_wakeup_proc(b9635data->a
 //**************************************
 //* Возобновление работы модуля
 //**************************************
-int pdm9635_battery_resume(struct platform_device* pdev) {
+int pmd9635_battery_resume(struct platform_device* pdev) {
 
 struct device* dev;
-struct pdm9635_battery_chip* b9635data;
+struct pmd9635_battery_chip* b9635data;
 
 dev=&pdev->dev;
 b9635data=dev_get_drvdata(dev);
@@ -72,9 +72,9 @@ return 0;
 //**************************************
 //* Приостановка модуля
 //**************************************
-int pdm9635_battery_suspend(struct platform_device* pdev, pm_message_t state) {
+int pmd9635_battery_suspend(struct platform_device* pdev, pm_message_t state) {
   
-struct pdm9635_battery_chip* b9635data;
+struct pmd9635_battery_chip* b9635data;
 int ret;
 int var1;
 struct rtc_time tm;
@@ -135,7 +135,7 @@ return ret;
 //**************************************
 //*  Чтение напряжения аккумулятора
 //**************************************
-int pmd9635_battery_get_vbat(struct pdm9635_battery_chip* b9635data, int* val) {
+int pmd9635_battery_get_vbat(struct pmd9635_battery_chip* b9635data, int* val) {
 
 int vbat_channel;  
 int ret;
@@ -152,7 +152,7 @@ return ret;
 //**************************************
 //*  Чтение температуры аккумулятора
 //**************************************
-int pmd9635_battery_get_vntc(struct pdm9635_battery_chip* b9635data, int* val) {
+int pmd9635_battery_get_vntc(struct pmd9635_battery_chip* b9635data, int* val) {
 
 int tbat_channel;  
 int ret;
@@ -171,7 +171,7 @@ return ret;
 //***********************************************
 //*  Конструктор модуля
 //***********************************************
-static int pdm9635_battery_probe(struct platform_device *pdev) {
+static int pmd9635_battery_probe(struct platform_device *pdev) {
 
 
 const char* procname="pmd9635_battery_probe"; 
@@ -180,13 +180,13 @@ char* rtcdevname="rtc0";
 int ret;
 struct rtc_device* rd;
 
-struct pdm9635_battery_chip* b9635data;
+struct pmd9635_battery_chip* b9635data;
 int vbat_channel, tbat_channel;
 struct device* dparent;
 
 if ((pdev == 0) || (pdev->dev.of_node == 0)) return -EINVAL;
 
-b9635data=kmalloc(sizeof(struct pdm9635_battery_chip),__GFP_ZERO|GFP_KERNEL);
+b9635data=kmalloc(sizeof(struct pmd9635_battery_chip),__GFP_ZERO|GFP_KERNEL);
 if (b9635data == 0) {
   pr_err("%s: Can't allocate memory!",procname);
   return -ENOMEM;
@@ -243,9 +243,9 @@ return 0;
 //**************************************
 //* Деструктор модуля
 //**************************************
-static int pdm9635_battery_remove(struct platform_device *pdev) {
+static int pmd9635_battery_remove(struct platform_device *pdev) {
 struct device* dparent;
-struct pdm9635_battery_chip* b9635data;
+struct pmd9635_battery_chip* b9635data;
 
 dparent=&pdev->dev;
 b9635data=dev_get_drvdata(dparent);
@@ -265,19 +265,19 @@ struct of_device_id pmd9635_battery_match={
   .compatible="qcom, pmd9635-battery"
 };  
 
-static struct platform_driver pdm9635_battery_driver = {
+static struct platform_driver pmd9635_battery_driver = {
 	.driver = {
 		   .name = "pmd9635_battery",
 		   .owner = THIS_MODULE,
 		   .of_match_table = &pmd9635_battery_match
 	},
-	.probe = pdm9635_battery_probe,
-	.remove = pdm9635_battery_remove,
-	.suspend = pdm9635_battery_suspend,
- 	.resume = pdm9635_battery_resume
+	.probe = pmd9635_battery_probe,
+	.remove = pmd9635_battery_remove,
+	.suspend = pmd9635_battery_suspend,
+ 	.resume = pmd9635_battery_resume
 };
 
-module_platform_driver(pdm9635_battery_driver);
+module_platform_driver(pmd9635_battery_driver);
 
-MODULE_DESCRIPTION("pdm9635 Battery driver");
+MODULE_DESCRIPTION("pmd9635 Battery driver");
 MODULE_LICENSE("GPL");
