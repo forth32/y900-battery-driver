@@ -10,6 +10,7 @@
 #include <linux/rtc.h>
 #include <linux/of.h>
 #include <linux/mod_devicetable.h>
+#include <linux/qpnp/qpnp-adc.h>
 
 int32_t jrd_qpnp_vadc_read(enum qpnp_vadc_channels channel,struct qpnp_vadc_result *result);
 
@@ -19,23 +20,23 @@ int32_t jrd_qpnp_vadc_read(enum qpnp_vadc_channels channel,struct qpnp_vadc_resu
 //*************************************************
 // все смещения вычислены по исходному дизассемблированному тексту
 
-struct bdata {
-  int alarm_wakeup_arg;  //0
+struct pdm9635_battery_chip {
+  int alarm_wakeup_arg;  //0    0 battery_core_interface*
   int (*timer_resume_proc)(int);  //4
   int (*timer_suspend_proc)(int);  //8
   int (*x_timer_suspend_proc)(int,int*);  //12
   void (*alarm_wakeup_proc)(int);  //16
   char* bname;  //20
-  struct bdata* thisptr;    //24
-  int (*get_vbat_proc)(struct bdata*, int*);  //28
+  struct pdm9635_battery_chip* thisptr;    //24
+  int (*get_vbat_proc)(struct pdm9635_battery_chip*, int*);  //28
   int x32;
-  int (*get_vntc_proc)(struct bdata*, int*);  //36
+  int (*get_vntc_proc)(struct pdm9635_battery_chip*, int*);  //36
   int x40;
   int x44;
   int x48;
   int vbat;   // 52
   int tbat;   // 56
-  char* rtcdev; //60
+  char* name_rtcdev; //60
   int x64;
   int x68;
   struct rtc_timer rtctimer; //72
@@ -48,7 +49,7 @@ struct bdata {
 //***********************************
 void pmd9635_battery_alarm_wakeup(void* private) {
 
-struct bdata* b9635data=private;
+struct pdm9635_battery_chip* b9635data=private;
   
 if (b9635data->alarm_wakeup_proc != 0) b9635data->alarm_wakeup_proc(b9635data->alarm_wakeup_arg);
 }
@@ -59,7 +60,7 @@ if (b9635data->alarm_wakeup_proc != 0) b9635data->alarm_wakeup_proc(b9635data->a
 int pdm9635_battery_resume(struct platform_device* pdev) {
 
 struct device* dev;
-struct bdata* b9635data;
+struct pdm9635_battery_chip* b9635data;
 
 dev=&pdev->dev;
 b9635data=dev_get_drvdata(dev);
@@ -71,27 +72,25 @@ return 0;
 //**************************************
 //* Приостановка модуля
 //**************************************
-int pdm9635_battery_suspend(struct platform_device* pdev) {
+int pdm9635_battery_suspend(struct platform_device* pdev, pm_message_t state) {
   
-struct device* dev;
-struct bdata* b9635data;
+struct pdm9635_battery_chip* b9635data;
 int ret;
 int var1;
 struct rtc_time tm;
 union {
   ktime_t kt;
-  long long longtime;
+  s64 longtime;
 } xtime;
 struct rtc_device* rd;
 
-dev=&pdev->dev;
-b9635data=dev_get_drvdata(dev);
+b9635data=dev_get_drvdata(&pdev->dev);
 
 if (b9635data->timer_suspend_proc != 0) b9635data->timer_suspend_proc(b9635data->alarm_wakeup_arg);
 if (b9635data->rtcfd == 0) {
-  rd=rtc_class_open(b9635data->rtcdev);
+  rd=rtc_class_open(b9635data->name_rtcdev);
   if (rd == 0) {
-    pr_err("pmd9635_battery_set_wakeup_alarm: can't open rtc device(%s)!\n",b9635data->rtcdev);
+    pr_err("pmd9635_battery_set_wakeup_alarm: can't open rtc device(%s)!\n",b9635data->name_rtcdev);
     return 0;
   }  
   b9635data->rtcfd=rd;
@@ -103,9 +102,10 @@ if (ret == 0) ret=var1/1000;
 
 rtc_timer_cancel(b9635data->rtcfd, &b9635data->rtctimer);
 rtc_read_time(b9635data->rtcfd, &tm);
+
 xtime.kt=rtc_tm_to_ktime(tm);
-xtime.longtime+=(long long)ret*(long long)1000000000;
-rtc_timer_start(b9635data->rtcfd, &b9635data->rtctimer, xtime.kt, (ktime_t)0);
+xtime.longtime+=(s64)ret*(s64)1000000000;
+rtc_timer_start(b9635data->rtcfd, &b9635data->rtctimer, xtime.kt, (ktime_t)((s64)0) );
 return 0;
 }
 
@@ -118,14 +118,14 @@ int pmd9635_get_adc_value(int channel,int* val) {
   
 const char* procname="pmd9635_get_adc_value";
 int ret;
-int stor;
+struct qpnp_vadc_result stor;
 
 if (val == 0) {
   pr_err("%s: Pointer of val is null\n",procname);
   return -EINVAL;
 }
 ret=jrd_qpnp_vadc_read(channel,&stor);
-*val=stor;
+*val=stor.physical;
 if (ret == 0) return 0;
 pr_err("%s: can't get adc value from channel %d, rc=%d",procname,channel,ret);
 return ret;
@@ -135,7 +135,7 @@ return ret;
 //**************************************
 //*  Чтение напряжения аккумулятора
 //**************************************
-int pmd9635_battery_get_vbat(struct bdata* b9635data, int* val) {
+int pmd9635_battery_get_vbat(struct pdm9635_battery_chip* b9635data, int* val) {
 
 int vbat_channel;  
 int ret;
@@ -152,7 +152,7 @@ return ret;
 //**************************************
 //*  Чтение температуры аккумулятора
 //**************************************
-int pmd9635_battery_get_vntc(struct bdata* b9635data, int* val) {
+int pmd9635_battery_get_vntc(struct pdm9635_battery_chip* b9635data, int* val) {
 
 int tbat_channel;  
 int ret;
@@ -180,13 +180,13 @@ char* rtcdevname="rtc0";
 int ret;
 struct rtc_device* rd;
 
-struct bdata* b9635data;
+struct pdm9635_battery_chip* b9635data;
 int vbat_channel, tbat_channel;
 struct device* dparent;
 
 if ((pdev == 0) || (pdev->dev.of_node == 0)) return -EINVAL;
 
-b9635data=kmalloc(sizeof(struct bdata),__GFP_ZERO|GFP_KERNEL);
+b9635data=kmalloc(sizeof(struct pdm9635_battery_chip),__GFP_ZERO|GFP_KERNEL);
 if (b9635data == 0) {
   pr_err("%s: Can't allocate memory!",procname);
   return -ENOMEM;
@@ -230,7 +230,7 @@ if (ret != 0) {
   return ret;
 }
  
-b9635data->rtcdev=rtcdevname;
+b9635data->name_rtcdev=rtcdevname;
 rd=rtc_class_open(rtcdevname);
 b9635data->rtcfd=rd;
 rtc_timer_init(&b9635data->rtctimer,&pmd9635_battery_alarm_wakeup,(void*)b9635data);
@@ -245,7 +245,7 @@ return 0;
 //**************************************
 static int pdm9635_battery_remove(struct platform_device *pdev) {
 struct device* dparent;
-struct bdata* b9635data;
+struct pdm9635_battery_chip* b9635data;
 
 dparent=pdev->dev.parent;
 b9635data=dev_get_drvdata(dparent);
