@@ -262,7 +262,7 @@ return 0;
 //**************************************
 
 struct of_device_id pmd9635_battery_match={
-  .compatible="qcom, pmd9635-battery"
+  .compatible="qcom,pmd9635-battery"
 };  
 
 static struct platform_driver pmd9635_battery_driver = {
