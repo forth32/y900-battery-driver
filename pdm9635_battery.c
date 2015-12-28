@@ -241,15 +241,18 @@ return 0;
 
 
 //**************************************
-//* Деструктор модуля - заглушка
+//* Деструктор модуля
 //**************************************
 static int pdm9635_battery_remove(struct platform_device *pdev) {
 struct device* dparent;
 struct pdm9635_battery_chip* b9635data;
 
-dparent=pdev->dev.parent;
+dparent=&pdev->dev;
 b9635data=dev_get_drvdata(dparent);
-if (b9635data != 0) kfree(b9635data);
+
+if (b9635data->rtcfd != 0) rtc_class_close(b9635data->rtcfd);
+battery_core_unregister(b9635data->parent,b9635data);
+kfree(b9635data);
 return 0;
 }
 
