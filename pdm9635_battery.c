@@ -187,7 +187,7 @@ static int pmd9635_battery_probe(struct platform_device *pdev) {
 
 
 const char* procname="pmd9635_battery_probe"; 
-char* bname="battery";
+static char* bname="battery";
 char* rtcdevname="rtc0";
 int ret;
 struct rtc_device* rd;
