@@ -26,8 +26,10 @@ struct battery_interface {
   int vbat;   
   int tbat;
   int charging_status;
+  unsigned int	batt_health; 
   struct power_supply psy;
   struct device* dev; 
+  struct device* parent;
 };
 
 
@@ -40,7 +42,7 @@ struct capacity {
   int vmin;
   int vmax;
   int offset;
-  int hysteresis
+  int hysteresis;
 };
   
 
@@ -61,19 +63,6 @@ struct capacity battery_capacity_table[]= {
 };   
 #define battery_capacity_table_size 12
 
-//*************************************************
-//*  Список свойств батарейки
-//*************************************************
-
-static enum power_supply_property pmd9635_battery_props[] = {
-	POWER_SUPPLY_PROP_STATUS,
-	POWER_SUPPLY_PROP_HEALTH,
-	POWER_SUPPLY_PROP_PRESENT,
-	POWER_SUPPLY_PROP_TEMP,
-	POWER_SUPPLY_PROP_ONLINE,
-	POWER_SUPPLY_PROP_VOLTAGE_NOW,
-	POWER_SUPPLY_PROP_CAPACITY
-};
 
 
 //**************************************
@@ -160,6 +149,58 @@ for(i=0;i<battery_capacity_table_size;i++) {
 }
 return 0;
 }
+
+//**************************************
+//*  Получение параметров батарейки
+//**************************************
+static int pdm9635_bat_get_property(struct power_supply *ps,enum power_supply_property psp,
+				union power_supply_propval *val) {
+  
+struct battery_interface* batdata=container_of(ps, struct battery_interface, psy);
+
+switch (psp) {
+  case POWER_SUPPLY_PROP_STATUS:
+    val->intval = batdata->charging_status;
+    break;
+    
+  case POWER_SUPPLY_PROP_HEALTH:
+    val->intval = batdata->batt_health;
+    break;
+    
+  case POWER_SUPPLY_PROP_PRESENT:
+    val->intval = 1;
+    break;
+    
+  case POWER_SUPPLY_PROP_TEMP:
+    pmd9635_battery_get_vntc(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_ONLINE:
+    val->intval = 1;
+    break;
+    
+  case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+    pmd9635_battery_get_vbat(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_CAPACITY:
+    pmd9635_battery_get_capacity(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_TECHNOLOGY:
+    val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+    break;
+    
+  case POWER_SUPPLY_PROP_CURRENT_NOW:
+    val->intval = 0;
+    break;
+    
+  default:
+    return -EINVAL;
+}
+return 0;
+}
+
   
   
 //***********************************************
@@ -194,11 +235,11 @@ batdata->bname=bname;
 //		.get_property		= s3c_adc_bat_get_property,
 //		.external_power_changed = s3c_adc_bat_ext_power_changed,
 
-strcpy(batdata->psy.name,"pmd9635-battery");
+batdata->psy.name="pmd9635-battery";
 batdata->psy.type=POWER_SUPPLY_TYPE_BATTERY;
 batdata->psy.num_properties=0;
 batdata->psy.use_for_apm=1;
-batdata->psy.status = POWER_SUPPLY_STATUS_DISCHARGING;
+batdata->psy.get_property = pdm9635_bat_get_property;
 dev_set_drvdata(&pdev->dev,batdata);
 
 if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,vbat-channel", &vbat_channel, 1) != 0) {
@@ -249,57 +290,6 @@ dparent=&pdev->dev;
 batdata=dev_get_drvdata(dparent);
 
 kfree(batdata);
-return 0;
-}
-
-//**************************************
-//*  Получение параметров батарейки
-//**************************************
-static int pdm9635_bat_get_property(struct power_supply *ps,enum power_supply_property psp,
-				union power_supply_propval *val) {
-  
-struct battery_interface* batdata=container_of(ps, struct battery_interface, psy);
-
-switch (psp) {
-  case POWER_SUPPLY_PROP_STATUS:
-    val->intval = batdata->charging_status;
-    break;
-    
-  case POWER_SUPPLY_PROP_HEALTH:
-    val->intval = batdata->batt_health;
-    break;
-    
-  case POWER_SUPPLY_PROP_PRESENT:
-    val->intval = 1;
-    break;
-    
-  case POWER_SUPPLY_PROP_TEMP:
-    pmd9635_batdata_get_vntc(batdata,&val->intval);
-    break;
-    
-  case POWER_SUPPLY_PROP_ONLINE:
-    val->intval = 1;
-    break;
-    
-  case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-    pmd9635_batdata_get_vbat(batdata,&val->intval);
-    break;
-    
-  case POWER_SUPPLY_PROP_CAPACITY:
-    pmd9635_batdata_get_capacity(batdata,&val->intval);
-    break;
-    
-  case POWER_SUPPLY_PROP_TECHNOLOGY:
-    val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
-    break;
-    
-  case POWER_SUPPLY_PROP_CURRENT_NOW:
-    val->intval = 0;
-    break;
-    
-  default:
-    return -EINVAL;
-}
 return 0;
 }
 
