@@ -25,8 +25,54 @@ struct battery_interface {
   int (*get_vntc_proc)(struct battery_interface*, int*);  
   int vbat;   
   int tbat;
+  int charging_status;
   struct power_supply psy;
   struct device* dev; 
+};
+
+
+//*****************************************************
+//*  Таблица соответствия напряжения и уровня заряда
+//*****************************************************
+
+struct capacity {
+  int percent;
+  int vmin;
+  int vmax;
+  int offset;
+  int hysteresis
+};
+  
+
+struct capacity battery_capacity_table[]= {
+//  %       vmin     vmax   offset hysteresis
+   {0,      3100,    3597,    0,    10},
+   {1,      3598,    3672,    0,    10},
+   {10,     3673,    3735,    0,    10},
+   {20,     3736,    3757,    0,    10},
+   {30,     3758,    3788,    0,    10},
+   {40,     3789,    3832,    0,    10},
+   {50,     3833,    3909,    0,    10},
+   {60,     3910,    3988,    0,    10},
+   {70,     3989,    4072,    0,    10},
+   {80,     4073,    4156,    0,    10},
+   {90,     4157,    4200,    0,    10},
+   {100,    4201,    4500,    0,    10}
+};   
+#define battery_capacity_table_size 12
+
+//*************************************************
+//*  Список свойств батарейки
+//*************************************************
+
+static enum power_supply_property pmd9635_battery_props[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CAPACITY
 };
 
 
@@ -98,7 +144,23 @@ pr_err("pmd9635_battery_get_vntc: can't get battery temperature, rc=%d\n",ret);
 return ret;
 }
 
+//**************************************
+//*  Чтение заряда аккумулятора
+//**************************************
+int pmd9635_battery_get_capacity(struct battery_interface* batdata, int* val) {
+  
+int i,volt;
 
+pmd9635_battery_get_vbat(batdata, &volt);
+for(i=0;i<battery_capacity_table_size;i++) {
+  if ((volt>battery_capacity_table[i].vmin) && (volt<battery_capacity_table[i].vmax)) {
+    *val=battery_capacity_table[i].percent;
+    return 1;
+  }  
+}
+return 0;
+}
+  
   
 //***********************************************
 //*  Конструктор модуля
@@ -190,6 +252,56 @@ kfree(batdata);
 return 0;
 }
 
+//**************************************
+//*  Получение параметров батарейки
+//**************************************
+static int pdm9635_bat_get_property(struct power_supply *ps,enum power_supply_property psp,
+				union power_supply_propval *val) {
+  
+struct battery_interface* batdata=container_of(ps, struct battery_interface, psy);
+
+switch (psp) {
+  case POWER_SUPPLY_PROP_STATUS:
+    val->intval = batdata->charging_status;
+    break;
+    
+  case POWER_SUPPLY_PROP_HEALTH:
+    val->intval = batdata->batt_health;
+    break;
+    
+  case POWER_SUPPLY_PROP_PRESENT:
+    val->intval = 1;
+    break;
+    
+  case POWER_SUPPLY_PROP_TEMP:
+    pmd9635_batdata_get_vntc(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_ONLINE:
+    val->intval = 1;
+    break;
+    
+  case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+    pmd9635_batdata_get_vbat(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_CAPACITY:
+    pmd9635_batdata_get_capacity(batdata,&val->intval);
+    break;
+    
+  case POWER_SUPPLY_PROP_TECHNOLOGY:
+    val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+    break;
+    
+  case POWER_SUPPLY_PROP_CURRENT_NOW:
+    val->intval = 0;
+    break;
+    
+  default:
+    return -EINVAL;
+}
+return 0;
+}
 
 //**************************************
 //*  Структуры данных описания модуля
