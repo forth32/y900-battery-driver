@@ -60,7 +60,7 @@ struct capacity {
   int hysteresis;
 };
   
-
+// 
 struct capacity battery_capacity_table[]= {
 //  %       vmin     vmax   offset hysteresis
    {0,      3100,    3597,    0,    10},
@@ -156,12 +156,15 @@ int pmd9635_battery_get_capacity(struct battery_interface* batdata, int* val) {
 int i,volt;
 
 pmd9635_battery_get_vbat(batdata, &volt);
+volt/=1000; // переводим в милливольты
 for(i=0;i<battery_capacity_table_size;i++) {
   if ((volt>battery_capacity_table[i].vmin) && (volt<battery_capacity_table[i].vmax)) {
     *val=battery_capacity_table[i].percent;
-    return 1;
+//    pr_err("pmd9635_battery_get_capacity: volt=%i percent=%i",volt,*val);
+//    return 1;
   }  
 }
+//pr_err("pmd9635_battery_get_capacity: error, volt=%i",volt);
 return 0;
 }
 
@@ -199,8 +202,8 @@ switch (psp) {
     break;
     
   case POWER_SUPPLY_PROP_CAPACITY:
-//    pmd9635_battery_get_capacity(batdata,&val->intval);
-    val->intval=80;
+    pmd9635_battery_get_capacity(batdata,&val->intval);
+//    val->intval=80;
     break;
     
   case POWER_SUPPLY_PROP_TECHNOLOGY:
@@ -253,6 +256,7 @@ batdata->psy.get_property = pdm9635_bat_get_property;
 batdata->psy.properties = pmd9635_battery_props,
 batdata->psy.num_properties = ARRAY_SIZE(pmd9635_battery_props),
 
+
 dev_set_drvdata(&pdev->dev,batdata);
 
 if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,vbat-channel", &vbat_channel, 1) != 0) {
@@ -287,7 +291,7 @@ if (ret != 0) {
   return ret;
 }
  
-printk(KERN_INFO "%s: vbat_channel=%d, tbat_channel=%d\n",procname,vbat_channel,tbat_channel);
+printk(KERN_ERR "%s: vbat_channel=%d, tbat_channel=%d\n",procname,vbat_channel,tbat_channel);
 return 0;
 }
 
