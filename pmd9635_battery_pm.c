@@ -32,6 +32,21 @@ struct battery_interface {
   struct device* parent;
 };
 
+//*************************************************
+//*  Список параметров, поддерживаемых батарейкой
+//*************************************************
+
+static enum power_supply_property pmd9635_battery_props[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+};
 
 //*****************************************************
 //*  Таблица соответствия напряжения и уровня заряда
@@ -230,16 +245,13 @@ batdata->parent=dparent;
 
 batdata->bname=bname;
 
-//		.properties		= s3c_adc_main_bat_props,
-//		.num_properties		= ARRAY_SIZE(s3c_adc_main_bat_props),
-//		.get_property		= s3c_adc_bat_get_property,
-//		.external_power_changed = s3c_adc_bat_ext_power_changed,
-
 batdata->psy.name="pmd9635-battery";
 batdata->psy.type=POWER_SUPPLY_TYPE_BATTERY;
-batdata->psy.num_properties=0;
 batdata->psy.use_for_apm=1;
 batdata->psy.get_property = pdm9635_bat_get_property;
+batdata->psy.properties = pmd9635_battery_props,
+batdata->psy.num_properties = ARRAY_SIZE(pmd9635_battery_props),
+
 dev_set_drvdata(&pdev->dev,batdata);
 
 if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,vbat-channel", &vbat_channel, 1) != 0) {
@@ -303,7 +315,7 @@ struct of_device_id pmd9635_battery_match={
 
 static struct platform_driver pmd9635_battery_driver = {
 	.driver = {
-		   .name = "pmd9635_battery",
+		   .name = "pmd9635-battery",
 		   .owner = THIS_MODULE,
 		   .of_match_table = &pmd9635_battery_match
 	},

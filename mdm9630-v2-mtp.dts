@@ -4002,7 +4002,7 @@
 				qcom,recharge-thresh-mv = <0x64>;
 				qcom,iterm-ma = <0x32>;
 				qcom,temp-monitor-disabled;
-				qcom,bms-psy-name = "pmd9635";
+				qcom,bms-psy-name = "pmd9635-battery";
 				regulator-name = "smb1357_otg_supply";
 				linux,phandle = <0x24>;
 				phandle = <0x24>;
