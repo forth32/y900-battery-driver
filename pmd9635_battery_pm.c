@@ -199,7 +199,8 @@ switch (psp) {
     break;
     
   case POWER_SUPPLY_PROP_CAPACITY:
-    pmd9635_battery_get_capacity(batdata,&val->intval);
+//    pmd9635_battery_get_capacity(batdata,&val->intval);
+    val->intval=80;
     break;
     
   case POWER_SUPPLY_PROP_TECHNOLOGY:
