@@ -694,10 +694,10 @@ static int smb135x_get_prop_batt_capacity(struct smb135x_chg *chip)
 //	        pr_err("smb135x-d: fake");
 		return chip->fake_battery_soc;
 	}
-        if (chip->bms_psy_name) {
-		chip->bms_psy = power_supply_get_by_name((char *)chip->bms_psy_name);
+//        if (chip->bms_psy_name) {
+//		chip->bms_psy = power_supply_get_by_name((char *)chip->bms_psy_name);
 //               pr_err("setting bms_psy = %08x\n",chip->bms_psy);
-          }		
+//          }		
 
 	if (chip->bms_psy) {
 		chip->bms_psy->get_property(chip->bms_psy,POWER_SUPPLY_PROP_CAPACITY, &ret);

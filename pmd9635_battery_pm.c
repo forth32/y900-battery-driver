@@ -190,7 +190,8 @@ switch (psp) {
     break;
     
   case POWER_SUPPLY_PROP_TEMP:
-    pmd9635_battery_get_vntc(batdata,&val->intval);
+//    pmd9635_battery_get_vntc(batdata,&val->intval);
+  val->intval=14;
     break;
     
   case POWER_SUPPLY_PROP_ONLINE:
@@ -255,8 +256,8 @@ batdata->psy.use_for_apm=1;
 batdata->psy.get_property = pdm9635_bat_get_property;
 batdata->psy.properties = pmd9635_battery_props,
 batdata->psy.num_properties = ARRAY_SIZE(pmd9635_battery_props),
-
-
+batdata->batt_health=POWER_SUPPLY_HEALTH_GOOD;
+batdata->charging_status=POWER_SUPPLY_STATUS_NOT_CHARGING;
 dev_set_drvdata(&pdev->dev,batdata);
 
 if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,vbat-channel", &vbat_channel, 1) != 0) {

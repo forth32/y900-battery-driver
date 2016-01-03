@@ -4094,7 +4094,7 @@
 				regulator-name = "smb1357_otg_supply";
 				linux,phandle = <0x49>;
 				phandle = <0x49>;
-				qcom,bms-psy-name = "pmd9635-battery";
+				qcom,bms-psy-name = "bms";
 			};
 		};
 
