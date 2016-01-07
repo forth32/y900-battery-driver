@@ -99,12 +99,50 @@ struct ntc_tvm ntc_tvm_tables[] = {
 
 #define ntc_table_size 35
 
+//*****************************************************
+//*   Таблица sysfs-атрибутов
+//*****************************************************
+
+struct attribute* _battery_attrs[22]		      
+struct device_attribute battery_attrs[21]={
+ {{"capacity", 0},                   battery_show_property, battery_store_property},
+ {{"ntc", 0},                        battery_show_property, battery_store_property},
+ {{"precharge_voltage", 0},          battery_show_property, battery_store_property},
+ {{"poweroff_voltage", 0},           battery_show_property, battery_store_property},
+ {{"low_voltage", 0},                battery_show_property, battery_store_property},
+ {{"recharge_voltage", 0},           battery_show_property, battery_store_property},
+ {{"charge_done_votage", 0},         battery_show_property, battery_store_property},
+ {{"temp_low_poweroff", 0},          battery_show_property, battery_store_property},
+ {{"temp_low_disable_charge", 0},    battery_show_property, battery_store_property},
+ {{"temp_high_disable_charge", 0},   battery_show_property, battery_store_property},
+ {{"temp_high_poweroff", 0},         battery_show_property, battery_store_property},
+ {{"temp_error_margin", 0},          battery_show_property, battery_store_property},
+ {{"charging_monitor_period", 0},    battery_show_property, battery_store_property},
+ {{"discharging_monitor_period", 0}, battery_show_property, battery_store_property},
+ {{"vbat_max", 0},                   battery_show_property, battery_store_property},
+ {{"ibat_max", 0},                   battery_show_property, battery_store_property},
+ {{"test_mode", 0},                  battery_show_property, battery_store_property},
+ {{"disable_charging", 0},           battery_show_property, battery_store_property},
+ {{"high_voltage", 0},               battery_show_property, battery_store_property},
+ {{"capacity_changed_margin", 0},    battery_show_property, battery_store_property},
+ {{"debug_mode", 0},                 battery_show_property, battery_store_property}
+}; 
+
+struct attribute_group battery_attr_group={
+  "parameters", 
+  battery_attr_is_visible, 
+  __battery_attrs
+}; 
+
+//*****************************************************
+//*  Главная интерфейсная структура
+//*****************************************************
+
 // 592 байта
 struct battery_core {
    struct battery_interface* api;   // 0
    charger_core_interface * charger; // 4
    struct device* dev;  // 8
-   int x10;
    struct mutex lock; //12, 40 байт
    int x52;
    struct wakeup_source ws;  // 56, размер 152   
@@ -520,6 +558,26 @@ queue_delayed_work_on(1,swq,&bat->mon_queue ,msecs_to_jiffies(bat->mon_period);
 if (bat->ws.active != 0) __pm_relax(&bat->ws);
 }
 
+
+//*****************************************************
+//*  Регистрация ветки параметров в sysfs
+//*****************************************************
+int battery_core_add_sysfs_interface(device *dev) {
+  
+int i,rc;
+  
+if (dev == 0) return -EINVAL;
+
+// формируем массив указателей
+for (i=0;i<22;i++) {
+  __battery_attrs[i]=&battery_attrs[i];
+}
+
+rc=sysfs_create_group(dev->kobj,battery_attr_group);
+if (rc != 0) pr_err("failed to add battery attrs!");
+}
+return rc;
+}
 
 //*****************************************************
 //*  Регистрация в системе батарейного дарйвера
