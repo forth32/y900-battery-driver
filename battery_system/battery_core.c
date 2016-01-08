@@ -164,9 +164,9 @@ struct battery_core {
 //   struct delayed_work* pwork; // 356
    
    int x392;
-   int mon_period; // 396
-   int x400;
-   int new_status;
+   int chg_mon_period; // 396
+   int dischg_mon_period;
+   int new_status; // 404
    int x408;
    char* bname;  //412
    int status;        //416
@@ -181,31 +181,30 @@ struct battery_core {
    int present;       //452
    int temp;          //456
    int health;        //460
-   int x464;
-   int x468;
-   int x472;
-   int x476;
-   int x480;
+   int debug_mode;
+   int test_mode;
+   int disable_chg;
+   int cap_changed_margin;
+   int prechare_volt;  //480
    int x484;
-   int x488;
-   int x492;
-   int x496;
-   int x500;
-   int x504;
-   int mintemp_dead;   // 508
-   int mintemp;   // 512
+   int poweroff_volt;  //488
+   int low_volt;  //492
+   int high_voltage;
+   int recharge_volt;    // 500
+   int charge_done_volt; //504
+   int temp_low_poweroff;   // 508
+   int temp_low_disable_charge;   // 512
    
-   int maxtemp;
-   int maxtemp_dead;    //528
-   int x532
+   int temp_high_disable_charge; //524
+   int temp_high_poweroff;    //528
+   int temp_error_margin   //532
    
-   int x536;
-   int x540;
+   int vref;              // 536
+   int vref_calib;        // 540
    struct ntc_tvm* ntc;  // 544
-   int ntcsize;
+   int ntcsize;          // 548
    struct capacity* cap; //552
    int capsize;  //556	
-   
    
 }   
 
@@ -319,17 +318,17 @@ switch (psp) {
     break;
   
   case POWER_SUPPLY_PROP_PRESENT:
-    if (bat->x468 != 0) bat->present=val->intval;
+    if (bat->test_mode != 0) bat->present=val->intval;
     else ret=-EPERM;
     break;
   
   case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-    if (bat->x468 != 0) bat->volt_now=val->intval;
+    if (bat->test_mode != 0) bat->volt_now=val->intval;
     else ret=-EPERM;
     break;
     
   case POWER_SUPPLY_PROP_TEMP:
-    if (bat->x468 != 0) bat->temp=val->intval;
+    if (bat->test_mode != 0) bat->temp=val->intval;
     else ret=-EPERM;
     break;
     
@@ -379,7 +378,7 @@ void battery_core_external_power_changed(power_supply *psy) {
 struct battery_core* bat=container_of(psy, struct battery_core, psy);  
 int mA;
 
-if (bat->x472 != 0) mA=0;
+if (bat->disable_chg != 0) mA=0;
 else mA=bat->current_max/1000;
 battery_core_set_ibat(bat,mA);
 }
@@ -450,16 +449,16 @@ if (api-> get_vntc_proc != 0) {
      temp=25;
    }  
    else {
-     if (bat->x536 != bat-> x540) rc=rc*bat->x540/bat->x536;
+     if (bat->vref != bat-> vref_calib) rc=rc*bat->vref_calib/bat->vref;
      for(i=0;i<bat->ntcsize-1;i++) {
        if ((rc>bat->ntc[i].tnvc) && (rc<bat->ntc[i+1].tnvc)) temp=bat->ntc[i].tntc;
      }
    }  
    health=POWER_SUPPLY_HEALTH_GOOD;
-   if ((temp>maxtemp_dead) || (temp<mintemp_dead)) health=POWER_SUPPLY_HEALTH_DEAD;
+   if ((temp>temp_high_poweroff) || (temp<temp_low_poweroff)) health=POWER_SUPPLY_HEALTH_DEAD;
    else {
-     if (temp>maxtemp) health=POWER_SUPPLY_HEALTH_OVERHEAT;
-     if (temp<mintemp) health=POWER_SUPPLY_HEALTH_COLD;
+     if (temp>temp_high_disable_charge) health=POWER_SUPPLY_HEALTH_OVERHEAT;
+     if (temp<temp_low_disable_charge) health=POWER_SUPPLY_HEALTH_COLD;
    }
    
    mutex_lock(&bat->lock);
@@ -513,12 +512,12 @@ new_status=bat->status;
 
 switch (bat->status) {
   case POWER_SUPPLY_STATUS_DISCHARGING:
-    if (volt<bat->x488) {
+    if (volt<bat->poweroff_volt) {
       bat->new_status=POWER_SUPPLY_STATUS_CHARGING;
       new_status=POWER_SUPPLY_STATUS_CHARGING;
       break;
     }
-    if (volt>=bat->x492) {
+    if (volt>=bat->low_volt) {
       new_status=POWER_SUPPLY_STATUS_UNKNOWN;
       break;
     }
@@ -535,7 +534,7 @@ switch (bat->status) {
       new_status=POWER_SUPPLY_STATUS_UNKNOWN;
       break;
     }
-    if (volt<bat->x500) {
+    if (volt<bat->recharge_volt) {
       bat->new_status=new_status;
       break;
     }
@@ -554,16 +553,315 @@ switch (bat->status) {
 // далее следует вызов charger+40 - .text:C0397E8C
 
 if (new_status>3) battery_core_external_power_changed(bat->psy);
-queue_delayed_work_on(1,swq,&bat->mon_queue ,msecs_to_jiffies(bat->mon_period);
+queue_delayed_work_on(1,swq,&bat->mon_queue ,msecs_to_jiffies(bat->chg_mon_period);
 if (bat->ws.active != 0) __pm_relax(&bat->ws);
 }
 
 
 //*****************************************************
+//* Модификация таблицы емкостей аккумулятора
+//*****************************************************
+battery_core_set_battery_capacity_tables(struct battery_core* bat,char* buf,size_t count) {
+  // пока заглушка
+  return 0;
+}  
+
+//*****************************************************
+//* Модификация таблицы ткмператур
+//*****************************************************
+battery_core_set_battery_ntc_tables(struct battery_core* bat,char* buf,size_t count) {
+  // пока заглушка
+  return 0;
+}  
+
+//*****************************************************
+//*  Сохранение sysfs-параметра
+//*****************************************************
+ssize_t battery_store_property(device *dev, device_attribute *attr, const unsigned char *buf, size_t count) {
+
+struct power_supply* psy;
+struct battery_core* bat;
+int res=0;
+int off;
+int rc;
+
+psy=dev_get_drvdata(dev);
+bat=container_of(psy, struct battery_core, psy);  
+
+off=(attr-battery_attrs)>>4;
+
+// Для всех атрибутов кроме 0 и 1 аргумент в буфере - число
+if (off>1) {
+  rc=kstrtol(buf,10,&res);
+  if (rc != 0) return rc;
+}
+
+// ветки обработки отдельных атрибутов
+switch(off) {
+  case 0:
+    // capacity
+    rc=battery_core_set_battery_capacity_tables(bat,buf,count);
+    if (rc == 0) return count;
+    return rc;
+   
+  case 1:
+    // ntc
+    rc=battery_core_set_battery_ntc_tables(bat,buf,count);
+    if (rc == 0) return count;
+    return rc;
+    
+  case 02: 
+    // precharge_voltage        
+    bat->prechare_volt=res;
+    break;
+    
+  case 03: 
+    // poweroff_voltage     
+    bat->poweroff_volt=res;
+    break;
+    
+  case 04: 
+    // low_voltage
+    bat->low_volt=res;
+    break;
+    
+  case 05: 
+    // recharge_voltage
+    bat->recharge_volt=res;
+    break;
+    
+  case 06: 
+    // charge_done_votage       
+    bat->charge_done_volt=res;
+    break;
+    
+  case 07: 
+    // temp_low_poweroff        
+    bat->temp_low_poweroff=res;
+    break;
+    
+  case 08: 
+    // temp_low_disable_charge  
+    bat->temp_low_disable_charge=res;
+    break;
+    
+  case 09: 
+    // temp_high_disable_charge 
+    bat->temp_high_disable_charge=res;
+    break;
+    
+  case 10: 
+    // temp_high_poweroff       
+    bat->temp_high_poweroff=res;
+    break;
+    
+  case 11: 
+    // temp_error_margin        
+    bat->temp_error_margin=res;
+    break;
+    
+  case 12: 
+    // charging_monitor_period  
+    bat->chg_mon_period=res;
+    break;
+    
+  case 13: 
+    // discharging_monitor_period
+    bat->dischg_mon_period=res;
+    break;
+    
+  case 14:
+    // vbat_max                 
+    bat->volt_max=res*1000;
+    break;
+    
+  case 15:
+    // ibat_max                 
+    bat->current_max=res*1000;
+    break;
+    
+  case 16:
+    // test_mode                
+    bat->test_mode=res;
+    break;
+    
+  case 17:
+    // disable_charging         
+    bat->disable_chg=res;
+    break;
+    
+  case 18:
+    // high_voltage             
+    bat->high_voltage=res;
+    break;
+    
+  case 19:
+    // capacity_changed_margin  
+    bat->cap_changed_margin=res;
+    break;
+    
+  case 20:
+    // debug_mode
+    bat->debug_mode=res;
+    break;
+}    
+return count;
+}
+
+//*****************************************************
+//*  Чтение sysfs-параметра
+//*****************************************************
+ssize_t battery_show_property(device *dev, device_attribute *attr, unsigned char* buf) {
+  
+struct power_supply* psy;
+struct battery_core* bat;
+int i,res,count;
+int off;
+int rc,vmin,vmax,offset,hyst;
+char* head_c="percentage:min,max,offset,hysteresis\n";
+
+
+psy=dev_get_drvdata(dev);
+bat=container_of(psy, struct battery_core, psy);  
+
+off=(attr-battery_attrs)>>4;
+  
+switch(off) {
+  case 0:
+    // capacity
+    if (bat->cap == 0) {
+      res=0;
+      break;
+    }
+    strcpy(buf,head_c);
+    count=strlen(head_c);
+    for(i=0;i<bat->capsize;i++) {
+      count+=sprint(buf+count,"%d%%:%d,%d,%d,%d\n",
+          bat->cap[i].percent,
+          bat->cap[i].vmin,
+          bat->cap[i].vmax,
+          bat->cap[i].offset,
+          bat->cap[i].hyst);
+    }
+    return count;
+    
+  case 1:
+    // ntc
+    if (bat->ntc == 0) {
+      res=0;
+      break;
+    }
+    count=sprintf(buf,"vref=%d, vref_calib=%d, ntc_table[%d]:\n",bat->vref,bat->vref_calib,bat->ntcsize);
+    for(i=0;i<bat->ntcsize;i++) {
+      count+=sprintf(buf+count,"%dC:%d\n",bat-tntc,bat->tnvc);
+    }
+    return count;
+    
+  case 2:
+    // precharge_voltage        
+    res=bat->prechare_volt;
+    break;
+     
+  case 03: 
+    // poweroff_voltage     
+    res=bat->poweroff_volt;
+    break;
+    
+  case 04: 
+    // low_voltage
+    res=bat->low_volt;
+    break;
+    
+  case 05: 
+    // recharge_voltage
+    res=bat->recharge_volt;
+    break;
+    
+  case 06: 
+    // charge_done_votage       
+    res=bat->charge_done_volt;
+    break;
+    
+  case 07: 
+    // temp_low_poweroff        
+    res=bat->temp_low_poweroff;
+    break;
+    
+  case 08: 
+    // temp_low_disable_charge  
+    res=bat->temp_low_disable_charge;
+    break;
+    
+  case 09: 
+    // temp_high_disable_charge 
+    res=bat->temp_high_disable_charge;
+    break;
+    
+  case 10: 
+    // temp_high_poweroff       
+    res=bat->temp_high_poweroff;
+    break;
+    
+  case 11: 
+    // temp_error_margin        
+    res=bat->temp_error_margin;
+    break;
+    
+  case 12: 
+    // charging_monitor_period  
+    res=bat->chg_mon_period;
+    break;
+    
+  case 13: 
+    // discharging_monitor_period
+    res=bat->dischg_mon_period;
+    break;
+    
+  case 14:
+    // vbat_max                 
+    res=bat->volt_max*1000;
+    break;
+    
+  case 15:
+    // ibat_max                 
+    res=bat->current_max*1000;
+    break;
+    
+  case 16:
+    // test_mode                
+    res=bat->test_mode;
+    break;
+    
+  case 17:
+    // disable_charging         
+    res=bat->disable_chg;
+    break;
+    
+  case 18:
+    // high_voltage             
+    res=bat->high_voltage;
+    break;
+    
+  case 19:
+    // capacity_changed_margin  
+    res=bat->cap_changed_margin;
+    break;
+    
+  case 20:
+    // debug_mode
+    res=bat->debug_mode;
+    break;
+     
+}     
+    
+return sprintf(buf,"%d\n",res);
+}
+    
+//*****************************************************
 //*  Регистрация ветки параметров в sysfs
 //*****************************************************
 int battery_core_add_sysfs_interface(device *dev) {
-  
+
 int i,rc;
   
 if (dev == 0) return -EINVAL;
@@ -573,7 +871,7 @@ for (i=0;i<22;i++) {
   __battery_attrs[i]=&battery_attrs[i];
 }
 
-rc=sysfs_create_group(dev->kobj,battery_attr_group);
+rc=sysfs_create_group(&dev->kobj,battery_attr_group);
 if (rc != 0) pr_err("failed to add battery attrs!");
 }
 return rc;
@@ -615,22 +913,22 @@ bat->volt_avg=0;
 bat->capacity=80;
 bat->x448=3;
 bat->temp=25;
-bat->x476=10;
+bat->cap_changed_margin=10;
 bat->present=0;
 bat->health=POWER_SUPPLY_HEALTH_UNKNOWN;
-bat->x536=1800000;
-bat->x540=1800000;
-bat->x464=0;
-bat->x468=0;
+bat->vref=1800000;
+bat->vref_calib=1800000;
+bat->debug_mode=0;
+bat->test_mode=0;
 
 bat->ntc=ntc_tvm_tables;
 bat->ntcsize=35;
 bat->cap=battery_capacity_table;
 bat->x556=battery_capacity_table_size;
 
-bat->x480=3000;
-bat->x472=0;
-bat->x488=3064;
+bat->prechare_volt=3000;
+bat->disable_chg=0;
+bat->poweroff_volt=3064;
 bat->x568=0;
 bat->x484=3264;
 bat->x572=0;
@@ -638,17 +936,17 @@ bat->x576=0;
 bat->x580=0;
 bat->x584=0;
 bat->x588=0;
-bat->x492=3600;
-bat->x532=2;
-bat->x496=4450;
-bat->x500=4200;
-bat->x504=4350;
-bat->mintemp_dead=-20;
-bat->mintemp=-5;
+bat->low_volt=3600;
+bat->temp_error_margin=2;
+bat->high_voltage=4450;
+bat->recharge_volt=4200;
+bat->charge_done_volt=4350;
+bat->temp_low_poweroff=-20;
+bat->temp_low_disable_charge=-5;
 bat->x516=-3;
 bat->x520=53;
-bat->maxtemp=55;
-bat->maxtemp_dead=65;
+bat->temp_high_disable_charge=55;
+bat->temp_high_poweroff=65;
 
 // кросс-ссылки структур друг на друга
 bat->api=api;
@@ -660,8 +958,8 @@ api->alarm_wakeup_proc=battery_core_wakeup;
 api->timer_resume_proc=0;
 api->timer_suspend_proc=0;
 
-bat->mon_period=20000;
-bat->x400=25000;
+bat->chg_mon_period=20000;
+bat->dischg_mon_period=25000;
 bat->x320=-32;
 
 bat->work.work.next=&bat->work.work.next;
