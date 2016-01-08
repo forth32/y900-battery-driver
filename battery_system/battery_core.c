@@ -878,6 +878,15 @@ return rc;
 }
 
 //*****************************************************
+//*  Удаление ветки параметров в sysfs
+//*****************************************************
+int  battery_core_remove_sysfs_interface(device *dev) {
+
+if (dev == 0) return -EINVAL;
+sysfs_remove_group(&dev->kobj,battery_attr_group);		      
+return 0;
+
+//*****************************************************
 //*  Регистрация в системе батарейного дарйвера
 //*****************************************************
 int battery_core_register(struct device* dev, struct battery_interface* api) {
