@@ -226,11 +226,6 @@ config BATTERY_S3C_ADC
 	help
 	Say Y here to enable support for iPAQ h1930/h1940/rx1950 battery
 
-config BATTERY_PDM9635
-	tristate "Battery driver for Qualcomm pdm9635 battery"
-	depends on SMB135X_CHARGER
-	help
-	  Say Y here to enable support for Qualcomm pdm9635 battery
 
 config CHARGER_88PM860X
 	tristate "Marvell 88PM860x Charger driver"
@@ -511,6 +506,13 @@ config QPNP_LINEAR_CHARGER
 	  detection and charging. The driver also offers relevant information
 	  to userspace via the power supply framework.
 
+config BATTERY_PMD9635
+	tristate "PMD9635 battery"
+	depends on SPMI
+	depends on OF_SPMI
+	help
+	  Say Y here to enable the pmd9635 battery + battery core system
+	  
 source "drivers/power/reset/Kconfig"
 
 endif # POWER_SUPPLY

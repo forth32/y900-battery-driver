@@ -3,4 +3,5 @@ struct charger_info {
  int ichg_now;
  int ada_connected;
  int charging_done;
-}
+};
+
