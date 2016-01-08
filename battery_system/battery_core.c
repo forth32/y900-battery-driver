@@ -110,8 +110,8 @@ struct ntc_tvm ntc_tvm_tables[] = {
 //*   Таблица sysfs-атрибутов
 //*****************************************************
 
-struct device_attribute* __battery_attrs[22];		      
-struct device_attribute battery_attrs[21]={
+static struct device_attribute* __battery_attrs[21];		      
+static struct device_attribute battery_attrs[21]={
  {{"capacity", 0},                   &battery_show_property, &battery_store_property},
  {{"ntc", 0},                        battery_show_property, battery_store_property},
  {{"precharge_voltage", 0},          battery_show_property, battery_store_property},
@@ -138,7 +138,7 @@ struct device_attribute battery_attrs[21]={
 struct attribute_group battery_attr_group={
   "parameters", 
   battery_attr_is_visible, 
-  __battery_attrs
+  &__battery_attrs[0]
 }; 
 
 //*****************************************************
