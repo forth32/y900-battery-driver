@@ -110,7 +110,54 @@ struct ntc_tvm ntc_tvm_tables[] = {
 //*   Таблица sysfs-атрибутов
 //*****************************************************
 
-static struct device_attribute* __battery_attrs[21];		      
+
+static DEVICE_ATTR(capacity,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(ntc,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(precharge_voltage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(poweroff_voltage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(low_voltage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(recharge_voltage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(charge_done_votage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(temp_low_poweroff,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(temp_low_disable_charge,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(temp_high_disable_charge,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(temp_high_poweroff,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(temp_error_margin,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(charging_monitor_period,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(discharging_monitor_period,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(vbat_max,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(ibat_max,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(test_mode,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(disable_charging,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(high_voltage,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(capacity_changed_margin,0,battery_show_property, battery_store_property);  
+static DEVICE_ATTR(debug_mode,0,battery_show_property, battery_store_property);  
+
+static struct attribute* battery_attrs[]={
+  &dev_attr_capacity.attr,
+  &dev_attr_ntc.attr,
+  &dev_attr_precharge_voltage.attr,
+  &dev_attr_poweroff_voltage.attr,
+  &dev_attr_low_voltage.attr,
+  &dev_attr_recharge_voltage.attr,
+  &dev_attr_charge_done_votage.attr,
+  &dev_attr_temp_low_poweroff.attr,
+  &dev_attr_temp_low_disable_charge.attr,
+  &dev_attr_temp_high_disable_charge.attr,
+  &dev_attr_temp_high_poweroff.attr,
+  &dev_attr_temp_error_margin.attr,
+  &dev_attr_charging_monitor_period.attr,
+  &dev_attr_discharging_monitor_period.attr,
+  &dev_attr_vbat_max.attr,
+  &dev_attr_ibat_max.attr,
+  &dev_attr_test_mode.attr,
+  &dev_attr_disable_charging.attr,
+  &dev_attr_high_voltage.attr,
+  &dev_attr_capacity_changed_margin.attr,
+  &dev_attr_debug_mode.attr,
+  0
+};
+/*
 static struct device_attribute battery_attrs[21]={
  {{"capacity", 0},                   &battery_show_property, &battery_store_property},
  {{"ntc", 0},                        battery_show_property, battery_store_property},
@@ -133,12 +180,13 @@ static struct device_attribute battery_attrs[21]={
  {{"high_voltage", 0},               battery_show_property, battery_store_property},
  {{"capacity_changed_margin", 0},    battery_show_property, battery_store_property},
  {{"debug_mode", 0},                 battery_show_property, battery_store_property}
-}; 
+};
+*/
 
-struct attribute_group battery_attr_group={
+static struct attribute_group battery_attr_group={
   "parameters", 
   battery_attr_is_visible, 
-  &__battery_attrs[0]
+  battery_attrs
 }; 
 
 //*****************************************************
@@ -201,7 +249,8 @@ struct battery_core_interface {
    int charge_done_volt; //504
    int temp_low_poweroff;   // 508
    int temp_low_disable_charge;   // 512
-   
+   int x516;
+   int x520;
    int temp_high_disable_charge; //524
    int temp_high_poweroff;    //528
    int temp_error_margin;   //532
@@ -212,7 +261,14 @@ struct battery_core_interface {
    int ntcsize;          // 548
    struct capacity* cap; //552
    int capsize;  //556	
-   
+   int x560;
+   int x564;
+   int x568;
+   int x572;
+   int x576;
+   int x580;
+   int x584;
+   int x588;
 };   
 
 //*****************************************************
@@ -877,14 +933,14 @@ return 420;
 //*****************************************************
 int battery_core_add_sysfs_interface(struct device *dev) {
 
-int i,rc;
+int rc;
   
 if (dev == 0) return -EINVAL;
 
 // формируем массив указателей
-for (i=0;i<22;i++) {
-  __battery_attrs[i]=&battery_attrs[i];
-}
+// for (i=0;i<22;i++) {
+//   __battery_attrs[i]=&battery_attrs[i];
+// }
 
 rc=sysfs_create_group(&dev->kobj,&battery_attr_group);
 if (rc != 0) pr_err("failed to add battery attrs!");
@@ -900,6 +956,7 @@ int  battery_core_remove_sysfs_interface(struct device *dev) {
 if (dev == 0) return -EINVAL;
 sysfs_remove_group(&dev->kobj,&battery_attr_group);		      
 return 0;
+}
 
 //*****************************************************
 //*  Регистрация в системе батарейного дарйвера
@@ -915,7 +972,7 @@ if (api->bname == 0) return -EINVAL;
 if (api->bname[0] == 0) return -EINVAL;
 
 
-bat=kmalloc(sizeof(battery_core),__GFP_ZERO|GFP_KERNEL);
+bat=kmalloc(sizeof(struct battery_core_interface),__GFP_ZERO|GFP_KERNEL);
 if (bat == 0) {
   pr_err("cannot get enough memory!\n");
   return -ENOMEM;
@@ -948,7 +1005,7 @@ bat->test_mode=0;
 bat->ntc=ntc_tvm_tables;
 bat->ntcsize=35;
 bat->cap=battery_capacity_table;
-bat->x556=battery_capacity_table_size;
+bat->capsize=battery_capacity_table_size;
 
 bat->prechare_volt=3000;
 bat->disable_chg=0;
@@ -976,7 +1033,7 @@ bat->temp_high_poweroff=65;
 bat->api=api;
 api->bat=bat;
 
-bat->charger=charger_core_get_charger_interface_by_name(api->bname);
+//bat->charger=charger_core_get_charger_interface_by_name(api->bname);
 api->x_timer_suspend_proc=0;
 api->alarm_wakeup_proc=battery_core_wakeup;
 api->timer_resume_proc=0;
@@ -984,14 +1041,15 @@ api->timer_suspend_proc=0;
 
 bat->chg_mon_period=20000;
 bat->dischg_mon_period=25000;
-bat->x320=-32;
+//bat->work.work.data=(atomic_long_t)(-32);
+bat->work.work.data.counter=-32;
 
-bat->work.work.next=&bat->work.work.next;
-bat->work.work.prev=&bat->work.work.next;
+bat->work.work.entry.next=&bat->work.work.entry;
+bat->work.work.entry.prev=&bat->work.work.entry;
 
 bat->new_status=0;
 bat->x408=0;
-bat->work.func=battery_core_monitor_work;
+bat->work.work.func=battery_core_monitor_work;
 
 init_timer_key(&bat->timer,2,0,0);
 
@@ -1003,9 +1061,9 @@ bat->mon_queue = alloc_workqueue("batt_monitor_wq", WQ_MEM_RECLAIM, 1);
 swq=bat->mon_queue;
 if (bat->mon_queue == 0) {
   pr_err("failed to create_workqueue batt_monitor_wq!");
-  swq=*system_wq;
+  swq=system_wq;
 }
-queue_delayed_work_on(1,swq,&bat->work ,msecs_to_jiffies(250);
+queue_delayed_work_on(1,swq,&bat->work ,msecs_to_jiffies(250));
 
 bat->psy.name=bat->bname;
 bat->psy.type=1;
@@ -1022,7 +1080,7 @@ if (rc<0) {
   goto err_power_supply_register_bat;
 }
 
-rc=battery_core_add_sysfs_interface(bat->psy.dev)
+rc=battery_core_add_sysfs_interface(bat->psy.dev);
 if (rc < 0) {
   pr_err("failed to add sysfs interface!\n");
   power_supply_unregister(&bat->psy);
@@ -1049,14 +1107,18 @@ return rc;
 //*  Отключение батарейного дарйвера
 //*****************************************************
 void battery_core_unregister(struct device *dev,struct battery_interface *api) {
+
+struct battery_core_interface* bat;  
   
 if ((api== 0) || (api->bat == 0)) return;
+bat=api->bat;
+
 battery_core_remove_sysfs_interface(dev);
 power_supply_unregister(&bat->psy);
 if (bat->mon_queue != 0) destroy_workqueue(bat->mon_queue);
 wakeup_source_remove(&bat->ws);
 wakeup_source_drop(&bat->ws);
-mutex_destroy(&bat->mutex);
+mutex_destroy(&bat->lock);
 kfree(bat);
 }
 

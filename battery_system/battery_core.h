@@ -11,7 +11,7 @@ struct battery_interface {
   int (*timer_resume_proc)(struct battery_core_interface*);  //4
   int (*timer_suspend_proc)(struct battery_core_interface*);  //8
   int (*x_timer_suspend_proc)(struct battery_core_interface*,int*);  //12
-  void (*alarm_wakeup_proc)(struct battery_core_interface*);  //16
+  int (*alarm_wakeup_proc)(void*);  //16
   char* bname;  //20
   struct battery_interface* thisptr;    //24
   int (*get_vbat_proc)(struct battery_interface*, int*);  //28
