@@ -110,7 +110,7 @@ struct ntc_tvm ntc_tvm_tables[] = {
 //*   Таблица sysfs-атрибутов
 //*****************************************************
 
-
+/*
 static DEVICE_ATTR(capacity,0,battery_show_property, battery_store_property);  
 static DEVICE_ATTR(ntc,0,battery_show_property, battery_store_property);  
 static DEVICE_ATTR(precharge_voltage,0,battery_show_property, battery_store_property);  
@@ -157,8 +157,9 @@ static struct attribute* battery_attrs[]={
   &dev_attr_debug_mode.attr,
   0
 };
-/*
-static struct device_attribute battery_attrs[21]={
+*/
+
+static struct device_attribute battery_dev_attrs[21]={
  {{"capacity", 0},                   &battery_show_property, &battery_store_property},
  {{"ntc", 0},                        battery_show_property, battery_store_property},
  {{"precharge_voltage", 0},          battery_show_property, battery_store_property},
@@ -181,7 +182,33 @@ static struct device_attribute battery_attrs[21]={
  {{"capacity_changed_margin", 0},    battery_show_property, battery_store_property},
  {{"debug_mode", 0},                 battery_show_property, battery_store_property}
 };
-*/
+
+static struct attribute* battery_attrs[]={
+  &battery_dev_attrs[0].attr,
+  &battery_dev_attrs[1].attr,
+  &battery_dev_attrs[2].attr,
+  &battery_dev_attrs[3].attr,
+  &battery_dev_attrs[4].attr,
+  &battery_dev_attrs[5].attr,
+  &battery_dev_attrs[6].attr,
+  &battery_dev_attrs[7].attr,
+  &battery_dev_attrs[8].attr,
+  &battery_dev_attrs[9].attr,
+  &battery_dev_attrs[10].attr,
+  &battery_dev_attrs[11].attr,
+  &battery_dev_attrs[12].attr,
+  &battery_dev_attrs[13].attr,
+  &battery_dev_attrs[14].attr,
+  &battery_dev_attrs[15].attr,
+  &battery_dev_attrs[16].attr,
+  &battery_dev_attrs[17].attr,
+  &battery_dev_attrs[18].attr,
+  &battery_dev_attrs[19].attr,
+  &battery_dev_attrs[20].attr,
+  0
+};
+
+
 
 static struct attribute_group battery_attr_group={
   "parameters", 
@@ -651,7 +678,7 @@ int rc;
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_attrs)>>4;
+off=(attr-battery_dev_attrs)>>4;
 
 // Для всех атрибутов кроме 0 и 1 аргумент в буфере - число
 if (off>1) {
@@ -786,7 +813,7 @@ char* head_c="percentage:min,max,offset,hysteresis\n";
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_attrs)>>4;
+off=(attr-battery_dev_attrs)>>4;
   
 switch(off) {
   case 0:
@@ -936,11 +963,6 @@ int battery_core_add_sysfs_interface(struct device *dev) {
 int rc;
   
 if (dev == 0) return -EINVAL;
-
-// формируем массив указателей
-// for (i=0;i<22;i++) {
-//   __battery_attrs[i]=&battery_attrs[i];
-// }
 
 rc=sysfs_create_group(&dev->kobj,&battery_attr_group);
 if (rc != 0) pr_err("failed to add battery attrs!");
