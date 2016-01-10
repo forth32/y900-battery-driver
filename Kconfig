@@ -509,7 +509,6 @@ config QPNP_LINEAR_CHARGER
 config BATTERY_PMD9635
 	tristate "PMD9635 battery"
 	depends on SPMI
-	depends on OF_SPMI
 	help
 	  Say Y here to enable the pmd9635 battery + battery core system
 	  

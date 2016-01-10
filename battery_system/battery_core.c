@@ -652,6 +652,10 @@ switch (bat->status) {
 
 // далее следует вызов charger+40 - .text:C0397E8C
 
+// для проверки устанавливаем health в POWER_SUPPLY_HEALTH_GOOD
+bat->health=POWER_SUPPLY_HEALTH_GOOD;
+
+
 if (new_status>3) battery_core_external_power_changed(&bat->psy);
 queue_delayed_work_on(1,bat->mon_queue,&bat->work ,msecs_to_jiffies(bat->chg_mon_period));
 if (bat->ws.active != 0) __pm_relax(&bat->ws);
@@ -688,7 +692,7 @@ int rc;
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_dev_attrs)>>4;
+off=(attr-battery_dev_attrs)>>2;
 
 // Для всех атрибутов кроме 0 и 1 аргумент в буфере - число
 if (off>1) {
@@ -823,7 +827,7 @@ char* head_c="percentage:min,max,offset,hysteresis\n";
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_dev_attrs)>>4;
+off=(attr-battery_dev_attrs)>>2;
   
 switch(off) {
   case 0:
