@@ -161,13 +161,13 @@ if (b9635data == 0) {
   return -ENOMEM;
 }
 
-dparent=pdev->dev.parent;
+dparent=&pdev->dev;
 b9635data->parent=dparent;
 
 b9635data->bname=bname;
 b9635data->thisptr=b9635data;
 
-dev_set_drvdata(&pdev->dev,b9635data);
+dev_set_drvdata(dparent,b9635data);
 
 if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,vbat-channel", &vbat_channel, 1) != 0) {
   pr_err("%s: failed to get vbat channel!\n",procname);
@@ -182,7 +182,7 @@ if (of_property_read_u32_array(pdev->dev.of_node, "pmd9635-battery,tbat-channel"
 b9635data->tbat=tbat_channel;
 
 if ((vbat_channel<0) && (tbat_channel<0)) {
-  dev_set_drvdata(&pdev->dev,0);
+  dev_set_drvdata(dparent,0);
   kfree(b9635data);
   return 0;
 }

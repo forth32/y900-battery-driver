@@ -232,20 +232,30 @@ struct battery_core_interface {
 
    struct workqueue_struct * mon_queue; // 316
 
- //---------------------------------  
-   struct delayed_work work;     // 320, размер  76:  320-386
-   // work_strict work
+//---------------------------------  
+   struct delayed_work work; // 320, размер 76: 320-392
+   // struct work_struct work
    //             atomic_long_t data;      320
-   //             struct list_head entry;  324-328
-
-   //void (*battery_core_monitor_work)(work_struct *); //332
-   struct timer_list timer; //336, размер 52: 336-392
-
-   // void (*function)(unsigned int); //352
+   //             struct list_head entry;  324-328 
+   //			  work_func_t func;		   332
+   // struct timer_list timer; // 336, размер 52: 336-384
+   //			  struct list_head entry; 336-340
+   //			  unsigned long expires; 344
+   //			  struct tvec_base *base; 348
+   //             void (*function)(unsigned long); 352
+   //             unsigned long data; 356
+   //             int slack; 360
+   //             int start_pid; 364
+   //             void *start_site; 368
+   //             char start_comm[16]; 372-384
+   // struct workqueue_struct *wq; 388
+   // int cpu; 392
 //-----------------------------------
+//---void (*battery_core_monitor_work)(work_struct *); //332
+//---void (*function)(unsigned int); //352
 //   struct delayed_work* pwork; // 356
    
-   int x392;
+// int x392;
    int chg_mon_period; // 396
    int dischg_mon_period;
    int new_status; // 404
@@ -1073,12 +1083,12 @@ bat->new_status=0;
 bat->x408=0;
 bat->work.work.func=battery_core_monitor_work;
 
-init_timer_key(&bat->timer,2,0,0);
+init_timer_key(&bat->work.timer,2,0,0);
 
-bat->timer.data=(unsigned int)(&bat->work);
+bat->work.timer.data=(unsigned int)(&bat->work);
 
 
-bat->timer.function=delayed_work_timer_fn;
+bat->work.timer.function=delayed_work_timer_fn;
 bat->mon_queue = alloc_workqueue("batt_monitor_wq", WQ_MEM_RECLAIM, 1);
 swq=bat->mon_queue;
 if (bat->mon_queue == 0) {
