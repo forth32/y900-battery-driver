@@ -573,7 +573,7 @@ donetemp:
 
 // Температуру измерили, теперь измеряем напряжение
 
-cap=99;
+cap=77;
 
 memset(data,0,32);
 //if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
@@ -776,12 +776,12 @@ switch(off) {
     
   case 14:
     // vbat_max                 
-    bat->volt_max=res*1000;
+    bat->volt_max=res;
     break;
     
   case 15:
     // ibat_max                 
-    bat->current_max=res*1000;
+    bat->current_max=res;
     break;
     
   case 16:
@@ -921,12 +921,12 @@ switch(off) {
     
   case 14:
     // vbat_max                 
-    res=bat->volt_max*1000;
+    res=bat->volt_max;
     break;
     
   case 15:
     // ibat_max                 
-    res=bat->current_max*1000;
+    res=bat->current_max;
     break;
     
   case 16:
@@ -1030,7 +1030,7 @@ bat->capacity=80;
 bat->x448=3;
 bat->temp=25;
 bat->cap_changed_margin=10;
-bat->present=0;
+bat->present=1;
 bat->health=POWER_SUPPLY_HEALTH_UNKNOWN;
 bat->vref=1800000;
 bat->vref_calib=1800000;
