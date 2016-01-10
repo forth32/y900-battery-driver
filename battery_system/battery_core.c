@@ -573,7 +573,7 @@ donetemp:
 
 // Температуру измерили, теперь измеряем напряжение
 
-cap=77;
+cap=99;
 
 memset(data,0,32);
 //if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
@@ -596,7 +596,7 @@ for (i=0;i<8;i++) {
 volt=battery_core_calculate_average(data);
 
 for (i=0;i<bat->capsize;i++) {
-  if ((volt>bat->cap[i].vmin) && (volt<bat->cap[i].vmax)) cap=bat->cap[i].percent;
+  if ((volt/1000>bat->cap[i].vmin) && (volt/1000<bat->cap[i].vmax)) cap=bat->cap[i].percent;
 }
 
 mutex_lock(&bat->lock);
