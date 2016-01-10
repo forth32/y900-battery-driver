@@ -486,22 +486,21 @@ battery_core_set_ibat(bat,mA);
 //*****************************************************
 //*  Вычисление среднего
 //*****************************************************
-int battery_core_calculate_average(int *data) {
+int battery_core_calculate_average(int* data) {
   
 int i;
 int max,min,v;
 int sum=0;
-max=min=data[0];
+sum=max=min=data[0];
 
-for(i=0;i<8;i++) {
+for(i=1;i<8;i++) {
   v=data[i];
-  if (v<=max) {
-    if (v<min) min=v;
-  }
-  else max=v;
+  if (v>max) max=v;
+  else if (v<min) min=v;
   sum+=v;
 }
 return(sum-max-min)/6;
+
 }
 
 //*****************************************************
@@ -516,7 +515,7 @@ struct delayed_work* dw=container_of(work, struct delayed_work, work);
 struct battery_core_interface* bat=container_of(dw, struct battery_core_interface, work);  
 int i;
 int rc;
-int temp;
+int temp=0;
 int health;
 int volt;
 int new_status;  // R6
@@ -534,7 +533,7 @@ else {
 }
 
 for (i=0;i<8;i++) {
-  if (api-> get_vntc_proc != 0) rc= (*api-> get_vntc_proc)(api->thisptr,&data[i]);
+  if (api-> get_vntc_proc != 0) rc= (*api-> get_vntc_proc)(api,&data[i]);
   else if (api-> x40 != 0) rc= (api-> x40)(api->thisptr,&data[i]);
   if (rc != 0) {
     pr_err("failed to measure battery temperature, rc=%d\n",rc);
@@ -551,7 +550,7 @@ if (api-> get_vntc_proc != 0) {
    else {
      if (bat->vref != bat-> vref_calib) rc=rc*bat->vref_calib/bat->vref;
      for(i=0;i<bat->ntcsize-1;i++) {
-       if ((rc>bat->ntc[i].tnvc) && (rc<bat->ntc[i+1].tnvc)) temp=bat->ntc[i].tntc;
+       if ((rc<bat->ntc[i].tnvc) && (rc>bat->ntc[i+1].tnvc)) temp=bat->ntc[i].tntc;
      }
    }  
    health=POWER_SUPPLY_HEALTH_GOOD;
@@ -564,6 +563,10 @@ if (api-> get_vntc_proc != 0) {
    mutex_lock(&bat->lock);
    bat->temp=temp;
    bat->health=health;
+   
+     // для проверки устанавливаем health в POWER_SUPPLY_HEALTH_GOOD
+//     bat->health=POWER_SUPPLY_HEALTH_GOOD;
+
    mutex_unlock(&bat->lock);
 }
 donetemp:
@@ -580,9 +583,9 @@ memset(data,0,32);
 
 
 // 8 выборок напряжения
-if (api-> get_vntc_proc == 0) goto no_vbat_proc;
+if (api-> get_vbat_proc == 0) goto no_vbat_proc;
 for (i=0;i<8;i++) {
-  rc= (*api-> get_vntc_proc)(api->thisptr,&data[i]);
+  rc= (*api-> get_vbat_proc)(api,&data[i]);
   if (rc != 0) {
     pr_err("failed to measure battery voltage, rc=%d\n",rc);
     goto no_vbat_proc;
@@ -590,7 +593,6 @@ for (i=0;i<8;i++) {
   (*arm_delay_ops.const_udelay)(1073740);
 }
 // далее вызывается chg+20, .text:C0397850
-
 volt=battery_core_calculate_average(data);
 
 for (i=0;i<bat->capsize;i++) {
@@ -652,8 +654,6 @@ switch (bat->status) {
 
 // далее следует вызов charger+40 - .text:C0397E8C
 
-// для проверки устанавливаем health в POWER_SUPPLY_HEALTH_GOOD
-bat->health=POWER_SUPPLY_HEALTH_GOOD;
 
 
 if (new_status>3) battery_core_external_power_changed(&bat->psy);
@@ -692,7 +692,7 @@ int rc;
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_dev_attrs)>>2;
+off=((unsigned int)attr-(unsigned int)battery_dev_attrs)/16;
 
 // Для всех атрибутов кроме 0 и 1 аргумент в буфере - число
 if (off>1) {
@@ -820,15 +820,14 @@ ssize_t battery_show_property(struct device *dev,struct device_attribute *attr, 
 struct power_supply* psy;
 struct battery_core_interface* bat;
 int i,res,count;
-int off;
+unsigned int off;
 char* head_c="percentage:min,max,offset,hysteresis\n";
 
 
 psy=dev_get_drvdata(dev);
 bat=container_of(psy, struct battery_core_interface, psy);  
 
-off=(attr-battery_dev_attrs)>>2;
-  
+off=((unsigned int)attr-(unsigned int)battery_dev_attrs)/16;
 switch(off) {
   case 0:
     // capacity

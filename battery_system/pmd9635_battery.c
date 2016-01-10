@@ -109,7 +109,9 @@ int pmd9635_battery_get_vbat(struct battery_interface* b9635data, int* val) {
 int vbat_channel;  
 int ret;
 
-if ((b9635data == 0) || (val == 0)) return -EINVAL;
+if ((b9635data == 0) || (val == 0)) {
+  return -EINVAL;
+}
 
 vbat_channel=b9635data->vbat;
 ret=pmd9635_get_adc_value(vbat_channel,val);
@@ -187,10 +189,10 @@ if ((vbat_channel<0) && (tbat_channel<0)) {
   return 0;
 }
  
-if (vbat_channel>=0)  b9635data->get_vbat_proc=&pmd9635_battery_get_vbat;
+if (vbat_channel>=0)  b9635data->get_vbat_proc=pmd9635_battery_get_vbat;
  else b9635data->get_vbat_proc=0;
 
-if (tbat_channel>=0)  b9635data->get_vntc_proc=&pmd9635_battery_get_vntc;
+if (tbat_channel>=0)  b9635data->get_vntc_proc=pmd9635_battery_get_vntc;
  else b9635data->get_vntc_proc=0;
  
 ret=battery_core_register(dparent,b9635data);
