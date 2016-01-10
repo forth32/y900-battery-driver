@@ -600,7 +600,7 @@ for (i=0;i<bat->capsize;i++) {
 }
 
 mutex_lock(&bat->lock);
-bat->volt_now=volt;
+bat->volt_now=data[7];
 bat->volt_avg=volt;
 bat->capacity=cap;
 mutex_unlock(&bat->lock);
