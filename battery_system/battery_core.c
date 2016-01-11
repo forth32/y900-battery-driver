@@ -776,12 +776,12 @@ switch(off) {
     
   case 14:
     // vbat_max                 
-    bat->volt_max=res;
+    bat->volt_max=res*1000;
     break;
     
   case 15:
     // ibat_max                 
-    bat->current_max=res;
+    bat->current_max=res*1000;
     break;
     
   case 16:
@@ -921,12 +921,12 @@ switch(off) {
     
   case 14:
     // vbat_max                 
-    res=bat->volt_max;
+    res=bat->volt_max/1000;
     break;
     
   case 15:
     // ibat_max                 
-    res=bat->current_max;
+    res=bat->current_max/1000;
     break;
     
   case 16:
