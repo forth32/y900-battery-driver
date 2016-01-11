@@ -984,7 +984,6 @@ api->timer_suspend_proc=0;
 
 bat->chg_mon_period=20000;
 bat->dischg_mon_period=25000;
-//bat->work.work.data=(atomic_long_t)(-32);
 bat->work.work.data.counter=-32;
 
 bat->work.work.entry.next=&bat->work.work.entry;

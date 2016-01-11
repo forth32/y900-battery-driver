@@ -62,9 +62,9 @@ struct battery_core_interface {
    //             int slack; 360
    //             int start_pid; 364
    //             void *start_site; 368
-   //             char start_comm[16]; 372-384
-   // struct workqueue_struct *wq; 388
-   // int cpu; 392
+   //             char start_comm[16]; 372-388
+   // struct workqueue_struct *wq; 392
+   // int cpu; 396
 //-----------------------------------
 //---void (*battery_core_monitor_work)(work_struct *); //332
 //---void (*function)(unsigned int); //352
