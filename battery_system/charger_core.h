@@ -5,3 +5,6 @@ struct charger_info {
  int charging_done;
 };
 
+struct charger_interface {
+};
+
