@@ -474,9 +474,19 @@ struct smb135x_chg {
   struct i2c_client* client;       // 0
   struct device* dev;              //4
   struct mutex	read_write_lock;   //8, 40 байт
-
+  struct charger_interface* api;  // +48 - API charger_interface  
   struct smb135x_chg* self;        // 92
   (*set_current_limit_fn)(void *self, int mA);  //96
+  (*enable_charge_fn)(void *self, int enable); // 100
+  (*set_otg_mode_fn)(void *self, int enable); // 104
+  char* ext_name_battery; // 108
+  char* ext_name_usb;     // 112
+
+  int cx128;
+  
+  int cx144;
+  
+  int cx160;
   
   u8	revision;    // 176
   int	version;     // 180
@@ -492,7 +502,7 @@ struct smb135x_chg {
   int	safety_time;     // 200
   int resume_delta_mv;   // 204
   int fake_battery_soc;  // 208
-  int cx212;     
+  struct dentry* debug_root;   // 212
   int usb_current_arr_size;  // 216
   int* usb_current_table;    // 220
   int	dc_current_arr_size;  // 224
@@ -510,7 +520,9 @@ struct smb135x_chg {
   bool	batt_cold; //479
   bool	batt_warm; //480
   bool	batt_cool; //481
-  bool temp_monitor_disabled; // 482
+  bool  temp_monitor_disabled; // 482
+  bool  resume_completed;  // 483
+  bool	irq_waiting;  // 484
   
   struct mutex	path_suspend_lock;  // 496, 40 байт
 
@@ -519,6 +531,7 @@ struct smb135x_chg {
   u32   workaround_flags;          // 648
   bool	soft_vfloat_comp_disabled; // 652
 
+  struct mutex	irq_complete; // 656, 40 байт
   struct regulator* therm_bias_vreg; //696
   struct delayed_work wireless_insertion_work;  // 700, размер 76 
   // 700: counter
@@ -614,6 +627,232 @@ struct smb135x_chg {
 	struct mutex			current_change_lock;
 };
 */
+
+//************************************************
+// Таблицы и обработчики SYSFS-веток
+//************************************************
+static int cnfg_debugfs_open(struct inode *inode, struct file *file)
+{
+	struct smb135x_chg *chip = inode->i_private;
+
+	return single_open(file, show_cnfg_regs, chip);
+}
+
+static const struct file_operations cnfg_debugfs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= cnfg_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+#define FIRST_STATUS_REG	0x46
+#define LAST_STATUS_REG		0x56
+static int show_status_regs(struct seq_file *m, void *data)
+{
+	struct smb135x_chg *chip = m->private;
+	int rc;
+	u8 reg;
+	u8 addr;
+
+	for (addr = FIRST_STATUS_REG; addr <= LAST_STATUS_REG; addr++) {
+		rc = smb135x_read(chip, addr, &reg);
+		if (!rc)
+			seq_printf(m, "0x%02x = 0x%02x\n", addr, reg);
+	}
+
+	return 0;
+}
+
+static int status_debugfs_open(struct inode *inode, struct file *file)
+{
+	struct smb135x_chg *chip = inode->i_private;
+
+	return single_open(file, show_status_regs, chip);
+}
+
+static const struct file_operations status_debugfs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= status_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int show_irq_count(struct seq_file *m, void *data)
+{
+	int i, j, total = 0;
+
+	for (i = 0; i < ARRAY_SIZE(handlers); i++)
+		for (j = 0; j < 4; j++) {
+			seq_printf(m, "%s=%d\t(high=%d low=%d)\n",
+						handlers[i].irq_info[j].name,
+						handlers[i].irq_info[j].high
+						+ handlers[i].irq_info[j].low,
+						handlers[i].irq_info[j].high,
+						handlers[i].irq_info[j].low);
+			total += (handlers[i].irq_info[j].high
+					+ handlers[i].irq_info[j].low);
+		}
+
+	seq_printf(m, "\n\tTotal = %d\n", total);
+
+	return 0;
+}
+
+static int irq_count_debugfs_open(struct inode *inode, struct file *file)
+{
+	struct smb135x_chg *chip = inode->i_private;
+
+	return single_open(file, show_irq_count, chip);
+}
+
+static const struct file_operations irq_count_debugfs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= irq_count_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int get_reg(void *data, u64 *val)
+{
+	struct smb135x_chg *chip = data;
+	int rc;
+	u8 temp;
+
+	rc = smb135x_read(chip, chip->peek_poke_address, &temp);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't read reg %x rc = %d\n",
+			chip->peek_poke_address, rc);
+		return -EAGAIN;
+	}
+	*val = temp;
+	return 0;
+}
+
+static int set_reg(void *data, u64 val)
+{
+	struct smb135x_chg *chip = data;
+	int rc;
+	u8 temp;
+
+	temp = (u8) val;
+	rc = smb135x_write(chip, chip->peek_poke_address, temp);
+	if (rc < 0) {
+		dev_err(chip->dev,
+			"Couldn't write 0x%02x to 0x%02x rc= %d\n",
+			chip->peek_poke_address, temp, rc);
+		return -EAGAIN;
+	}
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(poke_poke_debug_ops, get_reg, set_reg, "0x%02llx\n");
+
+static int force_irq_set(void *data, u64 val)
+{
+	struct smb135x_chg *chip = data;
+
+	smb135x_chg_stat_handler(chip->client->irq, data);
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(force_irq_ops, NULL, force_irq_set, "0x%02llx\n");
+
+static int force_rechg_set(void *data, u64 val)
+{
+	int rc;
+	struct smb135x_chg *chip = data;
+
+	if (!chip->chg_enabled) {
+		pr_debug("Charging Disabled force recharge not allowed\n");
+		return -EINVAL;
+	}
+
+	rc = smb135x_masked_write(chip, CFG_14_REG, EN_CHG_INHIBIT_BIT, 0);
+	if (rc)
+		dev_err(chip->dev,
+			"Couldn't disable charge-inhibit rc=%d\n", rc);
+	/* delay for charge-inhibit to take affect */
+	msleep(500);
+	rc |= smb135x_charging(chip, false);
+	rc |= smb135x_charging(chip, true);
+	rc |= smb135x_masked_write(chip, CFG_14_REG, EN_CHG_INHIBIT_BIT,
+						EN_CHG_INHIBIT_BIT);
+	if (rc)
+		dev_err(chip->dev,
+			"Couldn't enable charge-inhibit rc=%d\n", rc);
+
+	return rc;
+}
+DEFINE_SIMPLE_ATTRIBUTE(force_rechg_ops, NULL, force_rechg_set, "0x%02llx\n");
+
+#define FIRST_CMD_REG	0x40
+#define LAST_CMD_REG	0x42
+static int show_cmd_regs(struct seq_file *m, void *data)
+{
+	struct smb135x_chg *chip = m->private;
+	int rc;
+	u8 reg;
+	u8 addr;
+
+	for (addr = FIRST_CMD_REG; addr <= LAST_CMD_REG; addr++) {
+		rc = smb135x_read(chip, addr, &reg);
+		if (!rc)
+			seq_printf(m, "0x%02x = 0x%02x\n", addr, reg);
+	}
+
+	return 0;
+}
+
+static int cmd_debugfs_open(struct inode *inode, struct file *file)
+{
+	struct smb135x_chg *chip = inode->i_private;
+
+	return single_open(file, show_cmd_regs, chip);
+}
+
+static const struct file_operations cmd_debugfs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= cmd_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+#define FIRST_STATUS_REG	0x46
+#define LAST_STATUS_REG		0x56
+static int show_status_regs(struct seq_file *m, void *data)
+{
+	struct smb135x_chg *chip = m->private;
+	int rc;
+	u8 reg;
+	u8 addr;
+
+	for (addr = FIRST_STATUS_REG; addr <= LAST_STATUS_REG; addr++) {
+		rc = smb135x_read(chip, addr, &reg);
+		if (!rc)
+			seq_printf(m, "0x%02x = 0x%02x\n", addr, reg);
+	}
+
+	return 0;
+}
+
+static int status_debugfs_open(struct inode *inode, struct file *file)
+{
+	struct smb135x_chg *chip = inode->i_private;
+
+	return single_open(file, show_status_regs, chip);
+}
+
+static const struct file_operations status_debugfs_ops = {
+	.owner		= THIS_MODULE,
+	.open		= status_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 
 //************************************************
 //* Разрешение записи в защищенные регистры
@@ -1053,6 +1292,29 @@ static int __smb135x_charging(struct smb135x_chg *chip, int enable)
 			enable ?  "enabled" : "disabled running from batt");
 	return rc;
 }
+//*****************************************
+//* Верхняя процедура включения зарядки
+//*****************************************
+
+static int smb135x_charging(struct smb135x_chg *chip, int enable) {
+	int rc = 0;
+
+	pr_debug("charging enable = %d\n", enable);
+
+	__smb135x_charging(chip, enable);
+
+	if (chip->usb_psy) {
+		pr_debug("usb psy changed\n");
+		power_supply_changed(chip->usb_psy);
+	}
+	if (chip->dc_psy_type != -EINVAL) {
+		pr_debug("dc psy changed\n");
+		power_supply_changed(&chip->dc_psy);
+	}
+	pr_debug("charging %s\n",
+			enable ?  "enabled" : "disabled running from batt");
+	return rc;
+}
 
 //**************************************
 
@@ -1075,28 +1337,6 @@ static bool is_usb_slave_present(struct smb135x_chg *chip)
 
 	pr_debug("stat6= 0x%02x slave_present = %d\n", reg, usb_slave_present);
 	return usb_slave_present;
-}
-//**************************************
-
-static int smb135x_charging(struct smb135x_chg *chip, int enable)
-{
-	int rc = 0;
-
-	pr_debug("charging enable = %d\n", enable);
-
-	__smb135x_charging(chip, enable);
-
-	if (chip->usb_psy) {
-		pr_debug("usb psy changed\n");
-		power_supply_changed(chip->usb_psy);
-	}
-	if (chip->dc_psy_type != -EINVAL) {
-		pr_debug("dc psy changed\n");
-		power_supply_changed(&chip->dc_psy);
-	}
-	pr_debug("charging %s\n",
-			enable ?  "enabled" : "disabled running from batt");
-	return rc;
 }
 
 //*******************************************************
@@ -1531,6 +1771,76 @@ if (rc < 0) {
 return rc;
 }
 
+//**************************************
+//* Обработчик прерывания от smb135x
+//**************************************
+static irqreturn_t smb135x_chg_stat_handler(int irq, void *dev_id) {
+struct smb135x_chg *chip = dev_id;
+int i, j;
+u8 triggered;
+u8 changed;
+u8 rt_stat, prev_rt_stat;
+int rc;
+int handler_count = 0;
+
+mutex_lock(&chip->irq_complete);
+chip->irq_waiting = true;
+if (!chip->resume_completed) {
+	dev_dbg(chip->dev, "IRQ triggered before device-resume\n");
+	disable_irq_nosync(irq);
+	mutex_unlock(&chip->irq_complete);
+	return IRQ_HANDLED;
+}
+chip->irq_waiting = false;
+
+smb135x_irq_read(chip);
+for (i = 0; i < ARRAY_SIZE(handlers); i++) {
+	for (j = 0; j < ARRAY_SIZE(handlers[i].irq_info); j++) {
+		triggered = handlers[i].val
+		       & (IRQ_LATCHED_MASK << (j * BITS_PER_IRQ));
+		rt_stat = handlers[i].val
+			& (IRQ_STATUS_MASK << (j * BITS_PER_IRQ));
+		prev_rt_stat = handlers[i].prev_val
+			& (IRQ_STATUS_MASK << (j * BITS_PER_IRQ));
+		changed = prev_rt_stat ^ rt_stat;
+
+		if (triggered || changed)
+			rt_stat ? handlers[i].irq_info[j].high++ :
+					handlers[i].irq_info[j].low++;
+
+		if ((triggered || changed)
+			&& handlers[i].irq_info[j].smb_irq != NULL) {
+			handler_count++;
+			rc = handlers[i].irq_info[j].smb_irq(chip,
+							rt_stat);
+			if (rc < 0)
+				dev_err(chip->dev,
+					"Couldn't handle %d irq for reg 0x%02x rc = %d\n",
+					j, handlers[i].stat_reg, rc);
+		}
+	}
+	handlers[i].prev_val = handlers[i].val;
+}
+
+pr_debug("handler count = %d\n", handler_count);
+if (handler_count) {
+	pr_debug("batt psy changed\n");
+	power_supply_changed(&chip->batt_psy);
+	if (chip->usb_psy) {
+		pr_debug("usb psy changed\n");
+		power_supply_changed(chip->usb_psy);
+	}
+	if (chip->dc_psy_type != -EINVAL) {
+		pr_debug("dc psy changed\n");
+		power_supply_changed(&chip->dc_psy);
+	}
+}
+
+mutex_unlock(&chip->irq_complete);
+
+return IRQ_HANDLED;
+}
+
 
 //**************************************
 //*  Конструктор модуля
@@ -1542,6 +1852,7 @@ struct power_supply* usb_psy;
 struct smb135x_chg* chip;
 unsigned char reg=0;
 struct device_node*; 
+struct dentry *ent;
 
 usb_psy = power_supply_get_by_name("usb");
 if (!usb_psy) {
@@ -1684,7 +1995,87 @@ if (rc < 0) {
 
 chip->self=chip;
 chip->set_current_limit_fn=smb135x_set_current_limit;
-  
+chip->enable_charge_fn=smb135x_enable_charge;
+chip->set_otg_mode_fn=smb135x_set_otg_mode(void *self, int enable);
+chip->ext_name_battery="battery";
+chip->ext_name_usb="usb";
+
+rc=charger_core_register(dev,&chip->api);
+if (rc != 0) {
+  dev_err(&client->dev,"failed to register charger core, rc=%d\n",rc)
+  goto free_regulator;
+}
+
+// Настройка прерываний
+chip->resume_completed = true;
+mutex_init(&chip->irq_complete);
+
+if (client->irq) {
+	rc = devm_request_threaded_irq(&client->dev, client->irq, NULL,	smb135x_chg_stat_handler,
+			IRQF_TRIGGER_LOW | IRQF_ONESHOT,"smb135x_chg_stat_irq", chip);
+	if (rc < 0) {
+	 dev_err(&client->dev,"request_irq for irq=%d  failed rc = %d\n",client->irq, rc);
+	 goto unregister_dc_psy;
+	}
+	enable_irq_wake(client->irq);
+}
+
+// Создание sysfs-ветки
+
+chip->debug_root = debugfs_create_dir("smb135x", NULL);
+if (!chip->debug_root)	dev_err(chip->dev, "Couldn't create debug dir\n");
+else  {
+
+	ent = debugfs_create_file("config_registers", S_IFREG | S_IRUGO,chip->debug_root, chip,&cnfg_debugfs_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create cnfg debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("status_registers", S_IFREG | S_IRUGO,chip->debug_root, chip,&status_debugfs_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create status debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("cmd_registers", S_IFREG | S_IRUGO,chip->debug_root, chip,&cmd_debugfs_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create cmd debug file rc = %d\n",rc);
+
+	ent = debugfs_create_x32("address", S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root,&(chip->peek_poke_address));
+	if (!ent) dev_err(chip->dev,"Couldn't create address debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("data", S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root, chip,&poke_poke_debug_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create data debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("force_irq",S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root, chip,&force_irq_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create data debug file rc = %d\n",rc);
+
+	ent = debugfs_create_x32("skip_writes",S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root,&(chip->skip_writes));
+	if (!ent) dev_err(chip->dev,"Couldn't create data debug file rc = %d\n",rc);
+
+	ent = debugfs_create_x32("skip_reads", S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root,&(chip->skip_reads));
+	if (!ent) dev_err(chip->dev,"Couldn't create data debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("irq_count", S_IFREG | S_IRUGO,chip->debug_root, chip,&irq_count_debugfs_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create count debug file rc = %d\n",rc);
+
+	ent = debugfs_create_file("force_recharge",S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root, chip,&force_rechg_ops);
+	if (!ent) dev_err(chip->dev,"Couldn't create recharge debug file rc = %d\n",rc);
+
+	ent = debugfs_create_x32("usb_suspend_votes",S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root,&(chip->usb_suspended));
+	if (!ent) dev_err(chip->dev,"Couldn't create usb vote file rc = %d\n",rc);
+
+	ent = debugfs_create_x32("dc_suspend_votes",S_IFREG | S_IWUSR | S_IRUGO,chip->debug_root,&(chip->dc_suspended));
+	if (!ent) dev_err(chip->dev,"Couldn't create dc vote file rc = %d\n",rc);
+}
+
+dev_info(chip->dev, "SMB135X version = %s revision = %s successfully probed batt=%d dc = %d usb = %d\n",
+	version_str[chip->version],revision_str[chip->revision],smb135x_get_prop_batt_present(chip),chip->dc_present, chip->usb_present);
+// Все, закончили конструктор
+return 0;
+
+// выходы по ошикам
+unregister_dc_psy:
+free_regulator:
+
+smb135x_regulator_deinit(chip);
+return rc;
+}
+
 
 
 //**************************************
