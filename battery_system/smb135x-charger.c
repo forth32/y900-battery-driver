@@ -520,7 +520,8 @@ struct smb135x_chg {
   int	*dc_current_table;    // 228
   u8	irq_cfg_mask[3];     // 232
   struct power_supply* usb_psy;    //236
-  
+  int	usb_psy_ma;  // 240
+
   struct power_supply dc_psy;     // 352
   
 
@@ -566,7 +567,7 @@ struct smb135x_chg {
    //             char start_comm[16]; 752-768
    // struct workqueue_struct *wq; 772
    unsigned int	thermal_levels; //776
-
+   unsigned int	therm_lvl_sel; // 780
    unsigned int* thermal_mitigation; // 784
    struct mutex	current_change_lock; // 788, 40 байт
 //--- конец структуры
@@ -2802,6 +2803,46 @@ static int smb135x_get_prop_batt_present(struct smb135x_chg *chip)
 	return chip->batt_present;
 }
 
+
+//**************************************
+//* Установка тока зарядки
+//**************************************
+int smb135x_set_current_limit(void *self, int mA) {
+
+struct smb135x_chg* chip=self; 
+int rc;  
+int usb_supply_type;
+int therm_ma,current_ma;
+
+if ((chip == 0) || (mA<0)) {
+    dev_err(&client->dev, "Error parameters in smb135x_set_current_limit\n");
+    return -EINVAL;
+}
+if (chip->usb_psy == 0) return 1;
+usb_supply_type=power_supply_get_supply_type(chip->usb_psy);
+pr_info("[Core]get power_supply_type = %d",usb_supply_type);
+if (usb_supply_type == 0) return 1;
+pr_info("[Core]Set current limit = %d, usb_psy_ma = %d\n",mA,chip->usb_psy_ma);
+chip->usb_psy_ma=mA;
+
+rc=smb135x_get_prop_batt_present(chip);
+if (chip->batt_present == 0) {
+  pr_info("ignoring current request since battery is absent\n"
+  return -EPERM;
+}  
+if ((chip->therm_lvl_sel != 0) && (chip->therm_lvl_sel < (chip->thermal_levels-1)))
+    therm_ma=chip->thermal_mitigation[chip->therm_lvl_sel];
+else therm_ma=chip->usb_psy_ma;  
+current_ma = min(therm_ma, chip->usb_psy_ma);
+rc=smb135x_set_usb_chg_current(chip,current_ma);
+if (rc<0) {
+  dev_err(&client->dev,"Couldn't set USB current to min(%d, %d) rc = %d\n",therm_ma,chip->usb_psy_ma,rc);
+  return -EPERM;
+}
+return 1;
+}
+  
+	  
 #define DC_MA_MIN 300
 #define DC_MA_MAX 2000
 
