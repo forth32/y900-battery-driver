@@ -2803,10 +2803,132 @@ static int smb135x_get_prop_batt_present(struct smb135x_chg *chip)
 	return chip->batt_present;
 }
 
+//********************************************
+//* Определение текущего источника питания
+//********************************************
+int power_supply_get_supply_type(struct power_supply *psy) {
+  
+union power_supply_propval ret;
+if (psy->get_property == 0) return 0;
+(*psy->get_property)(psy,0x3d,&ret);
+return ret.intval;
+}
 
 //**************************************
 //* Установка тока зарядки
 //**************************************
+static int smb135x_set_high_usb_chg_current(struct smb135x_chg *chip,int current_ma) {
+	int i, rc;
+	u8 usb_cur_val;
+
+	for (i = chip->usb_current_arr_size - 1; i >= 0; i--) {
+		if (current_ma >= chip->usb_current_table[i])
+			break;
+	}
+	if (i < 0) {
+		dev_err(chip->dev,
+			"Cannot find %dma current_table using %d\n",
+			current_ma, CURRENT_150_MA);
+		rc = smb135x_masked_write(chip, CFG_5_REG,
+						USB_2_3_BIT, USB_2_3_BIT);
+		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+				USB_100_500_AC_MASK, USB_100_VAL);
+		if (rc < 0)
+			dev_err(chip->dev, "Couldn't set %dmA rc=%d\n",
+					CURRENT_150_MA, rc);
+		return rc;
+	}
+
+	usb_cur_val = i & USBIN_INPUT_MASK;
+	rc = smb135x_masked_write(chip, CFG_C_REG,
+				USBIN_INPUT_MASK, usb_cur_val);
+	if (rc < 0) {
+		dev_err(chip->dev, "cannot write to config c rc = %d\n", rc);
+		return rc;
+	}
+
+	rc = smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+					USB_100_500_AC_MASK, USB_AC_VAL);
+	if (rc < 0)
+		dev_err(chip->dev, "Couldn't write cfg 5 rc = %d\n", rc);
+	return rc;
+}
+//******************************************************************
+
+#define MAX_VERSION			0xF
+#define USB_100_PROBLEM_VERSION		0x2
+/* if APSD results are used
+ *	if SDP is detected it will look at 500mA setting
+ *		if set it will draw 500mA
+ *		if unset it will draw 100mA
+ *	if CDP/DCP it will look at 0x0C setting
+ *		i.e. values in 0x41[1, 0] does not matter
+ */
+static int smb135x_set_usb_chg_current(struct smb135x_chg *chip,int current_ma) {
+
+  int rc;
+
+	pr_debug("USB current_ma = %d\n", current_ma);
+
+	if (chip->workaround_flags & WRKARND_USB100_BIT) {
+		pr_info("USB requested = %dmA using %dmA\n", current_ma,
+						CURRENT_500_MA);
+		current_ma = CURRENT_500_MA;
+	}
+
+	if (current_ma == 0)
+		/* choose the lowest available value of 100mA */
+		current_ma = CURRENT_100_MA;
+
+	if (current_ma == SUSPEND_CURRENT_MA) {
+		/* force suspend bit */
+		rc = smb135x_path_suspend(chip, USB, CURRENT, true);
+		goto out;
+	}
+	if (current_ma < CURRENT_150_MA) {
+		/* force 100mA */
+		rc = smb135x_masked_write(chip, CFG_5_REG, USB_2_3_BIT, 0);
+		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+				USB_100_500_AC_MASK, USB_100_VAL);
+		rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
+		goto out;
+	}
+	/* specific current values */
+	if (current_ma == CURRENT_150_MA) {
+		rc = smb135x_masked_write(chip, CFG_5_REG,
+						USB_2_3_BIT, USB_2_3_BIT);
+		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+				USB_100_500_AC_MASK, USB_100_VAL);
+		rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
+		goto out;
+	}
+	if (current_ma == CURRENT_500_MA) {
+		rc = smb135x_masked_write(chip, CFG_5_REG, USB_2_3_BIT, 0);
+		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+				USB_100_500_AC_MASK, USB_500_VAL);
+		rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
+		goto out;
+	}
+	if (current_ma == CURRENT_900_MA) {
+		rc = smb135x_masked_write(chip, CFG_5_REG,
+						USB_2_3_BIT, USB_2_3_BIT);
+		rc |= smb135x_masked_write(chip, CMD_INPUT_LIMIT,
+				USB_100_500_AC_MASK, USB_500_VAL);
+		rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
+		goto out;
+	}
+
+	rc = smb135x_set_high_usb_chg_current(chip, current_ma);
+	rc |= smb135x_path_suspend(chip, USB, CURRENT, false);
+out:
+	if (rc < 0)
+		dev_err(chip->dev,
+			"Couldn't set %dmA rc = %d\n", current_ma, rc);
+	return rc;
+}
+
+
+//************************************************************8
 int smb135x_set_current_limit(void *self, int mA) {
 
 struct smb135x_chg* chip=self; 
@@ -2815,7 +2937,7 @@ int usb_supply_type;
 int therm_ma,current_ma;
 
 if ((chip == 0) || (mA<0)) {
-    dev_err(&client->dev, "Error parameters in smb135x_set_current_limit\n");
+    dev_err(chip->dev, "Error parameters in smb135x_set_current_limit\n");
     return -EINVAL;
 }
 if (chip->usb_psy == 0) return 1;
@@ -2827,7 +2949,7 @@ chip->usb_psy_ma=mA;
 
 rc=smb135x_get_prop_batt_present(chip);
 if (chip->batt_present == 0) {
-  pr_info("ignoring current request since battery is absent\n"
+  pr_info("ignoring current request since battery is absent\n");
   return -EPERM;
 }  
 if ((chip->therm_lvl_sel != 0) && (chip->therm_lvl_sel < (chip->thermal_levels-1)))
@@ -2836,12 +2958,65 @@ else therm_ma=chip->usb_psy_ma;
 current_ma = min(therm_ma, chip->usb_psy_ma);
 rc=smb135x_set_usb_chg_current(chip,current_ma);
 if (rc<0) {
-  dev_err(&client->dev,"Couldn't set USB current to min(%d, %d) rc = %d\n",therm_ma,chip->usb_psy_ma,rc);
+  dev_err(chip->dev,"Couldn't set USB current to min(%d, %d) rc = %d\n",therm_ma,chip->usb_psy_ma,rc);
   return -EPERM;
 }
 return 1;
 }
+
+//**************************************
+//* Включение-отключение зарядки
+//**************************************
+int smb135x_enable_charge(void *self, int enable) {
   
+struct smb135x_chg* chip=self;
+int usb_supply_type;
+
+dev_info(chip->dev,"[Core]enable charging = %d",enable);
+if (chip->usb_psy == 0) {
+  dev_err(chip->dev,"[Core]get power_supply_type is UNKNOW");
+  return 0;
+}
+usb_supply_type=power_supply_get_supply_type(chip->usb_psy);
+pr_info("[Core]get power_supply_type = %d\n",usb_supply_type);
+if (usb_supply_type == 0) {
+  dev_err(chip->dev,"[Core]get power_supply_type is UNKNOW");
+  return 0;
+}
+if (chip->batt_present == 0) return 0;
+return  __smb135x_charging(chip,enable);
+}
+
+//**************************************
+//*  Включение OTG-питания
+//**************************************
+int smb135x_set_otg_mode(void *self, int enable) {
+
+struct smb135x_chg* chip=self;
+int rc,otg_enable;
+unsigned char val;
+
+pr_info("[Core]smb135x_set_otg_mode = %d\n",enable);
+rc=smb135x_read(chip,CMD_CHG_REG,&val);
+if (rc<0) {
+  dev_err(chip->dev,"Couldn't read OTG enable bit rc=%d\n",rc);
+  return rc;
+}
+otg_enable=rc&OTG_EN;
+if (enable == otg_enable) {
+  dev_info(chip->dev," OTG mode is the same as input = %d\n",enable);
+  return 0;
+}
+if (enable != 0) {
+  rc=smb135x_masked_write(chip,CMD_CHG_REG,OTG_EN,1);
+  if (rc<0) dev_err(chip->dev,"Couldn't enable OTG mode rc=%d\n",rc);
+  return rc;
+}
+rc=smb135x_masked_write(chip,CMD_CHG_REG,OTG_EN,0);
+if (rc<0) dev_err(chip->dev,"Couldn't disable OTG mode rc=%d\n",rc);
+return rc;
+}
+
 	  
 #define DC_MA_MIN 300
 #define DC_MA_MAX 2000
@@ -3002,7 +3177,7 @@ if (rc < 0) {
 chip->self=chip;
 chip->set_current_limit_fn=smb135x_set_current_limit;
 chip->enable_charge_fn=smb135x_enable_charge;
-chip->set_otg_mode_fn=smb135x_set_otg_mode(void *self, int enable);
+chip->set_otg_mode_fn=smb135x_set_otg_mode;
 chip->ext_name_battery="battery";
 chip->ext_name_usb="usb";
 
