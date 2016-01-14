@@ -32,8 +32,7 @@ struct charger_core_interface {
  struct device* dev; // 4
  struct mutex	mutx;   // 8, 40 байт
  int ibat_max;    // 48 
- int ichg_max;    // 52
- 
+ int ichg_max;    // 52 
  int ichg_now;    // 56
  int charging_state;    // 60
  int charging_suspend;  // 64
@@ -57,7 +56,7 @@ static int registered_count=0;
 int charger_core_suspend_charging(void *self) {
   
 struct charger_core_interface* chip=self;
-struct charger_interface* api;=chip->api;
+struct charger_interface* api;
 int rc;
 
 if (chip == 0) return -EINVAL;
@@ -72,6 +71,175 @@ if (rc == 0) chip->charging_suspend=1;
 return rc;
 }
 
+
+//********************************************
+//*  Возобновление зарядки 
+//********************************************
+int charger_core_resume_charging(void *self) {
+  
+struct charger_core_interface* chip=self;
+struct charger_interface* api;
+int rc;
+  
+if (chip == 0) return -EINVAL;
+api=chip->api;
+if (api == 0) return 0;
+if (api->enable_charge_fn == 0) return 0;
+if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return -EINVAL; 
+if (chip->charging_suspend == 0) return -EINVAL;
+  
+rc=(*api->enable_charge_fn)(api->parent,1);
+if (rc == 0) chip->charging_suspend=1;
+return rc;
+}
+
+//********************************************
+//*  Установка зарядного тока
+//********************************************
+int charger_core_set_charging_current(void *self, int mA) {
+  
+struct charger_core_interface* chip=self;
+struct charger_interface* api;
+int rc;
+int max_src_ma;
+int max_bat_ma;
+int max_ma;
+int enable;
+
+if ((self == 0) || (mA<0)) return -EINVAL;
+api=chip->api;
+if (api == 0) return -EINVAL;
+if (api->enable_charge_fn == 0) return -EINVAL;
+
+api->ad_usb.af12=2;
+charger_core_get_adapter(&api->ad_usb);	
+
+api->ad1.af12=2;
+charger_core_get_adapter(&api->ad128);	
+
+api->ad1.af12=2;
+charger_core_get_adapter(&api->ad144);	
+
+api->ad1.af12=2;
+charger_core_get_adapter(&api->ad160);	
+
+max_src_ma=max(api->ad_usb.max_ma,api->ad128.max_ma);
+max_src_ma=max(max_src_ma,api->ad144.max_ma);
+
+max_bat_ma=min(chip->ichg_max, chip->ibat_max);
+max_ma=min(max_src_ma, max_bat_ma);
+max_ma=min(max_ma,mA);
+if (max_ma == 0) enable=0;
+else enable=1;
+
+rc=0;
+if (api->set_current_limit_fn != 0) {
+  rc=(*api->set_current_limit_fn)(api->parent,max_ma);
+}
+
+if (api->enable_charge_fn != 0) {
+  rc=(*api->enable_charge_fn)(api->parent, enable);
+}
+if (rc != 0) {
+  pr_err("failed to set charging current(%dmA) at driver layer!\n",max_ma);
+  return rc;
+}
+chip->charging_suspend=0;
+chip->charging_done=0;
+chip->ichg_now=max_ma;
+chip->charging_state=( (enable==0) ? POWER_SUPPLY_STATUS_NOT_CHARGING : POWER_SUPPLY_STATUS_CHARGING);
+pr_info("ichg=%dmA at %s\n",max_ma,(enable==0?"not_charging":"charging"));
+return 0;
+}
+
+//********************************************
+//*  Чтение текущего тока зарядки
+//********************************************
+int charger_core_get_charging_current(void *self, int *mA) {
+  
+struct charger_core_interface* chip=self;
+
+if ((chip == 0) || (mA == 0)) return -EINVAL;
+*mA=chip->ichg_now;
+return 0;
+}
+
+//************************************************
+//*  Получение информационной структуры зарядника
+//************************************************
+int charger_core_get_charger_info(void *self, charger_info *info) {
+  
+struct charger_core_interface* chip=self;
+struct charger_interface* api;
+
+if ((chip == 0) || (info == 0)) return -EINVAL;
+api=chip->api;
+if (api == 0) return -EINVAL;
+
+info->charging_status=chip->charging_state;
+info->ichg_now=chip->ichg_now;
+info->charging_done=chip->charging_done;
+if ((api->ad_usb.max_ma > 0) || (api->ad128.max_ma > 0) || (api->ad144.max_ma > 0) 
+  info->ada_connected=1;
+else info->ada_connected=0;
+return 0;
+}
+
+//********************************************
+//* Приостановка перезарядки
+//********************************************
+int  charger_core_suspend_recharging(void *self) {
+  
+if (self == 0) return -EINVAL;
+return -EPERM;
+}
+
+
+//********************************************
+//* Возобновление перезарядки
+//********************************************
+int charger_core_resume_recharging(void* self) {
+if (self == 0) return -EINVAL;
+return -EPERM;
+}
+
+
+//********************************************
+//*    Обработчик событий
+//********************************************
+int charger_core_notify_event(void *self, int event, void *params) {
+  
+struct charger_core_interface* chip=self;
+struct charger_interface* api;
+int ma;
+int rc;
+
+if (self == 0) return -EINVAL;
+switch(event) {
+  case 0:
+    chip->charging_done=1;
+  case 1:
+  case 2:
+    return 0;
+  case 3:
+    if (params == 0) return 0;
+    ma=*params;
+    if (ma == chip->ibat_max) return 0;
+    chip->ibat_max=ma;
+    if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return 0;
+    api=chip->api;
+    if (api->set_charging_current) == 0) return 0;
+    rc=api->set_charging_current(api,ma);    
+    if (rc != 0) pr_err("failed to adjust charging current %dmA to %dmA\n",chip->ichg_now,chip->ibat_max);
+    return rc;
+  default:
+    pr_err("no such event(%d)!",event);
+    return -EPERM;
+}
+}
+    
+    
+    
 //********************************************
 //* Регистрация драйвера зарядника
 //********************************************

@@ -3017,7 +3017,7 @@ chip->core.set_current_limit_fn=smb135x_set_current_limit;
 chip->core.enable_charge_fn=smb135x_enable_charge;
 chip->core.set_otg_mode_fn=smb135x_set_otg_mode;
 chip->core.ext_name_battery="battery";
-chip->core.ext_name_usb="usb";
+chip->core.ad_usb.name="usb";
 
 rc=charger_core_register(&client->dev,&chip->core);
 if (rc != 0) {

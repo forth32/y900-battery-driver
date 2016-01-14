@@ -13,6 +13,17 @@ struct smb135x_regulator {
 	struct regulator_dev	*rdev;
 };
 
+//*********************************************************************************
+//* Структура adapter, описывающая какие-то свойства разных источников питания
+//******************************************************************************
+
+struct adapter {
+  char* name;  // имя источника
+  int af4;
+  int max_ma;  // максимальный ток, отдаваемый источником
+  int af12;
+};  
+  
 //******************************************************************************
 //*  Главная интерфейсная структура между драйвером зарядника и charger core
 //******************************************************************************
@@ -36,9 +47,11 @@ struct charger_interface  {
   int (*enable_charge_fn)(void *self, int enable); // 100 // +52
   int (*set_otg_mode_fn)(void *self, int enable); // 104  // +56
   char* ext_name_battery; // 108  // +60
-  char* ext_name_usb;     // 112  
-
-  u8	revision;    // 176
+  struct adapter ad_usb;    // 112  // +64   16 байт  = 64 68 72 76
+  struct adapter ad128;       // 128  // +80 = 80 84 88 92    name af4 af8 af12
+  struct adapter ad144;       // 144  // +96 = 96 100 104 108
+  struct adapter ad160;       // 160  // +112 = 112 116 120 124
+  u8	revision;    // 176  // +128
   int	version;     // 180
   bool	chg_enabled; // 184
   bool	usb_present; // 185
