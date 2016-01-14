@@ -1,3 +1,5 @@
+#include <linux/regulator/driver.h>
+
 struct charger_info {
  int charger_status;
  int ichg_now;
@@ -31,10 +33,10 @@ struct adapter {
 
 struct charger_interface  {
   
-  struct charger_interface* self;  // +48 - API charger_interface   // +00
+  struct charger_core_interface* self;  // +48 - API charger_interface   // +00
   int (*get_charger_info)(void *self,struct charger_info *info);        // +52 // +4
-  int (*get_charging_current)(void *self, int mA);  // +56 // +8
-  int (*set_charging_current)(void *self, int* mA);  // +60 // +12
+  int (*get_charging_current)(void *self, int* mA);  // +56 // +8
+  int (*set_charging_current)(void *self, int mA);  // +60 // +12
   int (*suspend_charging)(void* self);         // +64 // +16
   int (*resume_charging)(void* self);          // +68 // +20
                                               // +72  // +24

@@ -64,6 +64,7 @@ if (ada == 0) return -EPERM;
 
 if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
 if (ada->psy != 0) {
+  psy=ada->psy;
   rc=psy->get_property(psy,POWER_SUPPLY_PROP_ONLINE,&prop);
   if (rc == 0) online=prop.intval;
   else online=0;
@@ -82,6 +83,7 @@ else current_max=0;
 ada->max_ma=current_max;
 if (ada->name == 0) return 0;
 pr_info("adapter[%s]: scope=%d, online=%d, current_max=%dmA, current_now=%dmA",ada->name,scope,online,current_max,0);
+return 0;
 }
 
   
@@ -341,7 +343,7 @@ if (name[0] == 0) return 0;
 
 for (i=0;i<10;i++) {
   if (registered_chip[i] == 0) continue;
-  if (strcmp(registered_chip[i]->api.ext_name_battery,name) == 0) return registered_chip[i]->api);
+  if (strcmp(registered_chip[i]->api->ext_name_battery,name) == 0) return registered_chip[i];
 }
 return 0;
 }
