@@ -52,12 +52,33 @@ static int registered_count=0;
 
 
 //********************************************
+//*  Приостановка зарядки 
+//********************************************
+int charger_core_suspend_charging(void *self) {
+  
+struct charger_core_interface* chip=self;
+struct charger_interface* api;=chip->api;
+int rc;
+
+if (chip == 0) return -EINVAL;
+api=chip->api;
+if (api == 0) return 0;
+if (api->enable_charge_fn == 0) return 0;
+if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return -EINVAL; 
+if (chip->charging_suspend != 0) return -EINVAL;
+
+rc=(*api->enable_charge_fn)(api->parent,0);
+if (rc == 0) chip->charging_suspend=1;
+return rc;
+}
+
+//********************************************
 //* Регистрация драйвера зарядника
 //********************************************
-int __fastcall charger_core_register(struct device* dev, struct charger_interface* api) {
+int charger_core_register(struct device* dev, struct charger_interface* api) {
 
 struct charger_core_interface* chip;
- 
+int i; 
 
 if ((dev == 0) || (api == 0)) return -EINVAL;
 if (api->parent == 0) return -EINVAL;  // нет собственной управляющей структуры
@@ -92,9 +113,31 @@ api->set_recharging_current = 0;
 api->notify_event = charger_core_notify_event;
 
 if (registered_count <9) {
-  registered_chip[registered_count++]=chip;
+  for (i=0;i<10;i++) {
+    if (registered_chip[i] != 0) continue;
+    registered_chip[i]=chip;
+    registered_count++;
+    break;
+  }  
 }
 pr_info("Charger Core Version 4.1.5 (Built at %s %s)!",__DATE__,__TIME__);
 return 0; 
+}
+
+//*************************************************8
+//* Поиск зарядника по имени
+//*************************************************8
+charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name) {
+
+int i;
+  
+if (name == 0) return 0;
+if (name[0] == 0) return 0;
+
+for (i=0;i<10;i++) {
+  if (registered_chip[i] == 0) continue;
+  if (strcmp(registered_chip[i]->api.ext_name_battery,name) == 0) return registered_chip[i]->api);
+}
+return 0;
 }
 

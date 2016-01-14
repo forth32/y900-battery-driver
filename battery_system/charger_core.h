@@ -32,11 +32,11 @@ struct charger_interface  {
   int (*resume_recharging)(void *self);       // +84  // +36
   int (*notify_event)(void *self, int event, void *params);  // +88  // +40
   struct smb135x_chg* parent;        // 92                 //c+44 charger_driver_interface* driver.self
-  int (*set_current_limit_fn)(void *self, int mA);  //96
-  int (*enable_charge_fn)(void *self, int enable); // 100
-  int (*set_otg_mode_fn)(void *self, int enable); // 104
-  char* ext_name_battery; // 108
-  char* ext_name_usb;     // 112
+  int (*set_current_limit_fn)(void *self, int mA);  //96  // +48
+  int (*enable_charge_fn)(void *self, int enable); // 100 // +52
+  int (*set_otg_mode_fn)(void *self, int enable); // 104  // +56
+  char* ext_name_battery; // 108  // +60
+  char* ext_name_usb;     // 112  
 
   u8	revision;    // 176
   int	version;     // 180
@@ -171,3 +171,4 @@ struct smb135x_chg {
 };
 */
 
+charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name);
