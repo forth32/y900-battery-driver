@@ -43,16 +43,24 @@ struct charger_core_interface {
  int recharging_suspend;  // 80
  
 } 
- 
+
 //********************************************
-//* Регистрация драфвра зарядника
+//* хранилище зарегистрированных зарядников  *
+//********************************************
+static charger core* registered_chip[10]={0,0,0,0,0,0,0,0,0,0}; 
+static int registered_count=0;
+
+
+//********************************************
+//* Регистрация драйвера зарядника
 //********************************************
 int __fastcall charger_core_register(struct device* dev, struct charger_interface* api) {
 
 struct charger_core_interface* chip;
-  
+ 
+
 if ((dev == 0) || (api == 0)) return -EINVAL;
-if (api->self == 0) return -EINVAL;
+if (api->parent == 0) return -EINVAL;  // нет собственной управляющей структуры
 
 chip=kzalloc(sizeof(struct charger_core_interface),GFP_KERNEL);
 if (chip == 0) {
@@ -70,7 +78,23 @@ chip->ibat_max=2000;
 chip->irechg_max=2000;
 chip->recharging_state=3;
 chip->ichg_now=0;
-chip->recharging_suspend=0;
+chip->recharging_suspend=0;	
 
-*api=chip;
+api->self=chip;  // обратная связь от интерфейса charger_core_interface к интерфейсу charger_interface
+api->suspend_charging=charger_core_suspend_charging;
+api->resume_charging = charger_core_resume_charging;
+api->set_charging_current = charger_core_set_charging_current;
+api->get_charging_current = charger_core_get_charging_current;
+api->get_charger_info = charger_core_get_charger_info;
+api->suspend_recharging = charger_core_suspend_recharging;
+api->resume_recharging = charger_core_resume_recharging;
+api->set_recharging_current = 0;
+api->notify_event = charger_core_notify_event;
+
+if (registered_count <9) {
+  registered_chip[registered_count++]=chip;
+}
+pr_info("Charger Core Version 4.1.5 (Built at %s %s)!",__DATE__,__TIME__);
+return 0; 
+}
 

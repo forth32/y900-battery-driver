@@ -20,9 +20,18 @@ struct smb135x_regulator {
 
 struct charger_interface  {
   
-  struct charger_interface* self;  // +48 - API charger_interface  
-
-  struct smb135x_chg* parent;        // 92
+  struct charger_interface* self;  // +48 - API charger_interface   // +00
+  int (*get_charger_info)(void *self, charger_info *info);        // +52 // +4
+  int (*get_charging_current)(void *self, int mA);  // +56 // +8
+  int (*set_charging_current)(void *self, int mA);  // +60 // +12
+  int (*suspend_charging)(void* self);         // +64 // +16
+  int (*resume_charging)(void* self);          // +68 // +20
+                                              // +72  // +24
+                                              // +76  // +28
+  int (*suspend_recharging)(void *self);      // +80  // +32
+  int (*resume_recharging)(void *self);       // +84  // +36
+  int (*notify_event)(void *self, int event, void *params);  // +88  // +40
+  struct smb135x_chg* parent;        // 92                 //c+44 charger_driver_interface* driver.self
   int (*set_current_limit_fn)(void *self, int mA);  //96
   int (*enable_charge_fn)(void *self, int enable); // 100
   int (*set_otg_mode_fn)(void *self, int enable); // 104
