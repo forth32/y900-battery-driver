@@ -19,7 +19,7 @@ struct smb135x_regulator {
 
 struct adapter {
   char* name;  // имя источника
-  int af4;
+  struct power_supply* psy;
   int max_ma;  // максимальный ток, отдаваемый источником
   int af12;
 };  
@@ -32,13 +32,13 @@ struct adapter {
 struct charger_interface  {
   
   struct charger_interface* self;  // +48 - API charger_interface   // +00
-  int (*get_charger_info)(void *self, charger_info *info);        // +52 // +4
+  int (*get_charger_info)(void *self,struct charger_info *info);        // +52 // +4
   int (*get_charging_current)(void *self, int mA);  // +56 // +8
-  int (*set_charging_current)(void *self, int mA);  // +60 // +12
+  int (*set_charging_current)(void *self, int* mA);  // +60 // +12
   int (*suspend_charging)(void* self);         // +64 // +16
   int (*resume_charging)(void* self);          // +68 // +20
                                               // +72  // +24
-                                              // +76  // +28
+  int (*set_recharging_current)(void* self, int mA); // +76  // +28
   int (*suspend_recharging)(void *self);      // +80  // +32
   int (*resume_recharging)(void *self);       // +84  // +36
   int (*notify_event)(void *self, int event, void *params);  // +88  // +40
@@ -184,4 +184,5 @@ struct smb135x_chg {
 };
 */
 
-charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name);
+struct charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name);
+int charger_core_register(struct device* dev, struct charger_interface* api);

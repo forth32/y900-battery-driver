@@ -41,13 +41,50 @@ struct charger_core_interface {
  int recharging_state;  // 76
  int recharging_suspend;  // 80
  
-} 
+}; 
 
 //********************************************
 //* хранилище зарегистрированных зарядников  *
 //********************************************
-static charger core* registered_chip[10]={0,0,0,0,0,0,0,0,0,0}; 
+static struct charger_core_interface* registered_chip[10]={0,0,0,0,0,0,0,0,0,0}; 
 static int registered_count=0;
+
+
+//********************************************
+//* Получение информации об источнике питания
+//********************************************
+int charger_core_get_adapter(struct adapter *ada) {
+
+int online,rc,current_max,scope;  
+struct power_supply* psy;  
+union power_supply_propval prop;
+
+
+if (ada == 0) return -EPERM;
+
+if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
+if (ada->psy != 0) {
+  rc=psy->get_property(psy,POWER_SUPPLY_PROP_ONLINE,&prop);
+  if (rc == 0) online=prop.intval;
+  else online=0;
+  
+  rc=psy->get_property(psy,POWER_SUPPLY_PROP_CURRENT_MAX,&prop);
+  if (rc != 0) current_max=0;
+  else current_max=prop.intval/1000;
+  
+  rc=psy->get_property(psy,62,&prop);
+  if (rc == 0) scope=prop.intval;
+  else scope=0;
+  
+  if (online == 0) current_max=0;
+}
+else current_max=0;
+ada->max_ma=current_max;
+if (ada->name == 0) return 0;
+pr_info("adapter[%s]: scope=%d, online=%d, current_max=%dmA, current_now=%dmA",ada->name,scope,online,current_max,0);
+}
+
+  
 
 
 //********************************************
@@ -114,13 +151,13 @@ if (api->enable_charge_fn == 0) return -EINVAL;
 api->ad_usb.af12=2;
 charger_core_get_adapter(&api->ad_usb);	
 
-api->ad1.af12=2;
+api->ad128.af12=2;
 charger_core_get_adapter(&api->ad128);	
 
-api->ad1.af12=2;
+api->ad144.af12=2;
 charger_core_get_adapter(&api->ad144);	
 
-api->ad1.af12=2;
+api->ad160.af12=2;
 charger_core_get_adapter(&api->ad160);	
 
 max_src_ma=max(api->ad_usb.max_ma,api->ad128.max_ma);
@@ -167,7 +204,7 @@ return 0;
 //************************************************
 //*  Получение информационной структуры зарядника
 //************************************************
-int charger_core_get_charger_info(void *self, charger_info *info) {
+int charger_core_get_charger_info(void *self, struct charger_info *info) {
   
 struct charger_core_interface* chip=self;
 struct charger_interface* api;
@@ -176,10 +213,10 @@ if ((chip == 0) || (info == 0)) return -EINVAL;
 api=chip->api;
 if (api == 0) return -EINVAL;
 
-info->charging_status=chip->charging_state;
+info->charger_status=chip->charging_state;
 info->ichg_now=chip->ichg_now;
 info->charging_done=chip->charging_done;
-if ((api->ad_usb.max_ma > 0) || (api->ad128.max_ma > 0) || (api->ad144.max_ma > 0) 
+if ((api->ad_usb.max_ma > 0) || (api->ad128.max_ma > 0) || (api->ad144.max_ma > 0)) 
   info->ada_connected=1;
 else info->ada_connected=0;
 return 0;
@@ -223,12 +260,12 @@ switch(event) {
     return 0;
   case 3:
     if (params == 0) return 0;
-    ma=*params;
+    ma=*((int*)params);
     if (ma == chip->ibat_max) return 0;
     chip->ibat_max=ma;
     if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return 0;
     api=chip->api;
-    if (api->set_charging_current) == 0) return 0;
+    if (api->set_charging_current == 0) return 0;
     rc=api->set_charging_current(api,ma);    
     if (rc != 0) pr_err("failed to adjust charging current %dmA to %dmA\n",chip->ichg_now,chip->ibat_max);
     return rc;
@@ -257,7 +294,7 @@ if (chip == 0) {
   return -ENOMEM;
 }
 chip->dev=dev;
-mitex_init(&chip->mutx);
+mutex_init(&chip->mutx);
 chip->api=api;
 chip->charging_suspend=0;
 chip->charging_done=0;
@@ -295,7 +332,7 @@ return 0;
 //*************************************************8
 //* Поиск зарядника по имени
 //*************************************************8
-charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name) {
+struct charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name) {
 
 int i;
   
