@@ -1,5 +1,4 @@
 int32_t jrd_qpnp_vadc_read(enum qpnp_vadc_channels channel,struct qpnp_vadc_result *result);
-//struct battery_core_interface;
 
 //*************************************************
 //* интерфейсная структура драйвера батарейки
@@ -38,7 +37,7 @@ struct battery_interface {
 // 592 байта
 struct battery_core_interface {
    struct battery_interface* api;   // 0
-   struct charger_core_interface * charger; // 4
+   struct charger_core_interface* charger; // 4
    struct device* dev;  // 8
    struct mutex lock; //12, 40 байт
    int x52;

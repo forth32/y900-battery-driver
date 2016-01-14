@@ -109,82 +109,32 @@ struct charger_interface  {
   unsigned int	therm_lvl_sel; // 780
   unsigned int* thermal_mitigation; // 784
   struct mutex	current_change_lock; // 788, 40 байт
-//--- конец структуры
   
 };
 
-//############################################################################################
-// прототип структуры из открытого модуля
-/*  
-struct smb135x_chg {
-	struct i2c_client		*client;              // 0
-	struct device			*dev;              //4
-	struct mutex			read_write_lock;   //8, 40 байт
 
-	u8				revision;    // 48
-	int				version;     // 52
+//*************************************************************
+//* Структура интерфейса между charger_core и battery_core
+//*************************************************************
+// оригинал - 84 байта
+struct charger_core_interface {
 
-	bool				chg_enabled; // 56
+ struct charger_interface* api; // 0
+ struct device* dev; // 4
+ struct mutex	mutx;   // 8, 40 байт
+ int ibat_max;    // 48 
+ int ichg_max;    // 52 
+ int ichg_now;    // 56
+ int charging_state;    // 60
+ int charging_suspend;  // 64
+ int charging_done;  // 68 
+ int irechg_max;  // 72
+ int recharging_state;  // 76
+ int recharging_suspend;  // 80
+ 
+}; 
 
-	bool				usb_present; //60
-	bool				dc_present;  // 64
-	bool				usb_slave_present;  //68
-	bool				dc_ov;   // 72
-
-	bool				bmd_algo_disabled;  // 76
-	bool				iterm_disabled;     // 80
-	int				iterm_ma;          // 84
-	int				vfloat_mv;        // 88
-	int				safety_time;       //92
-	int				resume_delta_mv;   // 96
-	int				fake_battery_soc;  // 100
-	struct dentry			*debug_root;       //104
-	int				usb_current_arr_size;  // 108
-	int				*usb_current_table;    // 112
-	int				dc_current_arr_size;  // 116
-	int				*dc_current_table;    // 120
-	u8				irq_cfg_mask[3];     // 124
-
-//	 psy 
-	struct power_supply		*usb_psy;    //128
-	int				usb_psy_ma;  //132
-	struct power_supply		batt_psy;   //136, размер 148
-	struct power_supply		dc_psy;     // 284
-	struct power_supply		*bms_psy;   //432
-	int				dc_psy_type;  // 436
-	int				dc_psy_ma;    // 440
-	const char			*bms_psy_name; // 444
-
-//	 status tracking 
-	bool				chg_done_batt_full;  // 448
-	bool				batt_present;    // 452
-	bool				batt_hot;
-	bool				batt_cold;
-	bool				batt_warm;
-	bool				batt_cool;
-
-	bool				resume_completed;
-	bool				irq_waiting;
-	u32				usb_suspended;
-	u32				dc_suspended;
-	struct mutex			path_suspend_lock;
-
-	u32				peek_poke_address;
-	struct smb135x_regulator	otg_vreg;
-	int				skip_writes;
-	int				skip_reads;
-	u32				workaround_flags;
-	bool				soft_vfloat_comp_disabled;
-	struct mutex			irq_complete;
-	struct regulator		*therm_bias_vreg;
-	struct delayed_work		wireless_insertion_work;
-
-	unsigned int			thermal_levels;
-	unsigned int			therm_lvl_sel;
-	unsigned int			*thermal_mitigation;
-	struct mutex			current_change_lock;
-};
-*/
 
 struct charger_core_interface* charger_core_get_charger_interface_by_name(const unsigned char* name);
 int charger_core_register(struct device* dev, struct charger_interface* api);
+

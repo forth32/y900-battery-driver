@@ -22,26 +22,6 @@
 #include "battery_core.h"
 #include "charger_core.h"
 
-//*************************************************************
-//* Структура интерфейса между charger_core и battery_core
-//*************************************************************
-// оригинал - 84 байта
-struct charger_core_interface {
-
- struct charger_interface* api; // 0
- struct device* dev; // 4
- struct mutex	mutx;   // 8, 40 байт
- int ibat_max;    // 48 
- int ichg_max;    // 52 
- int ichg_now;    // 56
- int charging_state;    // 60
- int charging_suspend;  // 64
- int charging_done;  // 68 
- int irechg_max;  // 72
- int recharging_state;  // 76
- int recharging_suspend;  // 80
- 
-}; 
 
 //********************************************
 //* хранилище зарегистрированных зарядников  *

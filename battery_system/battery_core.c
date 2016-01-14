@@ -351,20 +351,18 @@ return ret;
 //*****************************************************
 int battery_core_set_ibat(struct battery_core_interface* bat, int mA) {
 
-//struct charger_core_interface* chg;
 struct charger_info chg_info;
-
-//if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
-//chg=bat->charger
-//if (chg != 0) {
-//  if (chg->x012 != 0) *(chg->x012)(chg->x000,mA);
-//}
+struct charger_interface* api;
 
 chg_info.ichg_now=0;
 chg_info.ada_connected=0;
-//if (chg != 0) {
-//   if (chg->x004 != 0) *(chg->x004)(chg->x000,&chg_info);
-// }
+
+if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
+if (bat->charger != 0) {
+  api=bat->charger->api;
+  if (api->set_charging_current != 0) (*api->set_charging_current)(api,mA);
+  if (api->get_charger_info != 0) (*api->get_charger_info)(api,&chg_info);
+}
 
 bat->current_now = chg_info.ichg_now*1000;
 
@@ -421,6 +419,7 @@ int data[8];
 struct battery_interface* api;
 struct delayed_work* dw=container_of(work, struct delayed_work, work);
 struct battery_core_interface* bat=container_of(dw, struct battery_core_interface, work);  
+struct charger_interface* capi;
 int i;
 int rc;
 int temp=0;
@@ -472,9 +471,6 @@ if (api-> get_vntc_proc != 0) {
    bat->temp=temp;
    bat->health=health;
    
-     // для проверки устанавливаем health в POWER_SUPPLY_HEALTH_GOOD
-//     bat->health=POWER_SUPPLY_HEALTH_GOOD;
-
    mutex_unlock(&bat->lock);
 }
 donetemp:
@@ -484,10 +480,20 @@ donetemp:
 cap=99;
 
 memset(data,0,32);
-//if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
 
-// Далее следует кучка вызовов charger_core_interface+16
-// .text:C03977DC - пока разбирать не будем
+// приостанавливаем зарядку и ждем стабилизации напряжения
+if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
+if (bat->charger != 0) {
+  capi=bat->charger->api;
+  if (capi->suspend_charging != 0) {
+    rc=(*capi->suspend_charging)(capi);
+    if (rc == 0) {
+      for(i=0;i<11;i++) {
+	(*arm_delay_ops.const_udelay)(107374000);
+      }
+    }
+  }
+}  
 
 
 // 8 выборок напряжения
@@ -500,7 +506,13 @@ for (i=0;i<8;i++) {
   }  
   (*arm_delay_ops.const_udelay)(1073740);
 }
-// далее вызывается chg+20, .text:C0397850
+
+// возобновляем зарядку
+if (bat->charger != 0) {
+  capi=bat->charger->api;
+  if (capi->resume_charging != 0) (*capi->resume_charging)(capi);
+}
+
 volt=battery_core_calculate_average(data);
 
 for (i=0;i<bat->capsize;i++) {
