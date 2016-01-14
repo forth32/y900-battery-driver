@@ -5,33 +5,30 @@ struct charger_info {
  int charging_done;
 };
 
+//**************************************
+//*  Описатель регулятора напряжения
+//**************************************
+struct smb135x_regulator {
+	struct regulator_desc	rdesc;
+	struct regulator_dev	*rdev;
+};
+
 //******************************************************************************
 //*  Главная интерфейсная структура между драйвером зарядника и charger core
 //******************************************************************************
-// размер 828 байт
+// +48 от начала smb135x_chg - отсюда начинается структура API, передаваемая в charger_core 
 
 struct charger_interface  {
-
-  struct i2c_client* client;       // 0
-  struct device* dev;              //4
-  struct mutex	read_write_lock;   //8, 40 байт
   
-// +48 - отсюда и начинается структура API 
-  struct charger_interface* api;  // +48 - API charger_interface  
+  struct charger_interface* self;  // +48 - API charger_interface  
 
-  struct smb135x_chg* self;        // 92
+  struct smb135x_chg* parent;        // 92
   int (*set_current_limit_fn)(void *self, int mA);  //96
   int (*enable_charge_fn)(void *self, int enable); // 100
   int (*set_otg_mode_fn)(void *self, int enable); // 104
   char* ext_name_battery; // 108
   char* ext_name_usb;     // 112
 
-  int cx128;
-  
-  int cx144;
-  
-  int cx160;
-  
   u8	revision;    // 176
   int	version;     // 180
   bool	chg_enabled; // 184
@@ -91,9 +88,6 @@ struct charger_interface  {
 //--- конец структуры
   
 };
-
-
-typedef charger_interface smb135x_chg;
 
 //############################################################################################
 // прототип структуры из открытого модуля

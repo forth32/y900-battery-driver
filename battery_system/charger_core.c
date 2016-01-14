@@ -25,22 +25,22 @@
 //*************************************************************
 //* Структура интерфейса между charger_core и battery_core
 //*************************************************************
-
+// оригинал - 84 байта
 struct charger_core_interface {
 
  struct charger_interface* api; // 0
  struct device* dev; // 4
  struct mutex	mutx;   // 8, 40 байт
- int ci48;
- int ci52;
+ int ibat_max;    // 48 
+ int ichg_max;    // 52
  
- int ci56;
- int ci60;
- int ci64;
- int ci68;
- int ci72;
- int ci76;
- int ci80;
+ int ichg_now;    // 56
+ int charging_state;    // 60
+ int charging_suspend;  // 64
+ int charging_done;  // 68 
+ int irechg_max;  // 72
+ int recharging_state;  // 76
+ int recharging_suspend;  // 80
  
 } 
  
@@ -62,15 +62,15 @@ if (chip == 0) {
 chip->dev=dev;
 mitex_init(&chip->mutx);
 chip->api=api;
-chip->ci64=0;
-chip->ci68=0;
-chip->ci52=2000;
-chip->ci60=3;
-chip->ci48=2000;
-chip->ci72=2000;
-chip->ci76=3;
-chip->ci56=0;
-chip->ci80=0;
+chip->charging_suspend=0;
+chip->charging_done=0;
+chip->ichg_max=2000;
+chip->charging_state=3;
+chip->ibat_max=2000;
+chip->irechg_max=2000;
+chip->recharging_state=3;
+chip->ichg_now=0;
+chip->recharging_suspend=0;
 
 *api=chip;
 
