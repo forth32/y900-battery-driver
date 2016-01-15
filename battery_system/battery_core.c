@@ -427,6 +427,7 @@ int health;
 int volt;
 int new_status;  // R6
 int cap;
+int current_max;
 
 if (!bat->ws.active) __pm_stay_awake(&bat->ws);
 api=bat->api;
@@ -575,7 +576,8 @@ switch (bat->status) {
 //  сообщаем заряднику о текущем ограничении зарядного тока
 if (bat->charger != 0) {
   capi=bat->charger->api;
-  if (capi->notify_event != 0) (*capi->notify_event)(capi,4,bat->current_max);
+  current_max=bat->current_max;
+  if (capi->notify_event != 0) (*capi->notify_event)(capi,4,&current_max);
 }
 
 
