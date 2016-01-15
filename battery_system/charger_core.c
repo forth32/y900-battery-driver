@@ -41,8 +41,9 @@ union power_supply_propval prop;
 
 
 if (ada == 0) return -EPERM;
-
-if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
+if (ada->name == 0) return 0;
+pr_err("ada->name = %08x \n",ada->name);
+//if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
 if (ada->psy != 0) {
   psy=ada->psy;
   rc=psy->get_property(psy,POWER_SUPPLY_PROP_ONLINE,&prop);
@@ -117,8 +118,8 @@ return rc;
 //********************************************
 int charger_core_set_charging_current(void *self, int mA) {
   
-struct charger_core_interface* chip=self;
-struct charger_interface* api;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 int rc;
 int max_src_ma;
 int max_bat_ma;
@@ -126,7 +127,8 @@ int max_ma;
 int enable;
 
 if ((self == 0) || (mA<0)) return -EINVAL;
-api=chip->api;
+chip=api->self;
+pr_err(" setchg: chip=%08x  api=%08x\n",chip,api);
 if (api == 0) return -EINVAL;
 if (api->enable_charge_fn == 0) return -EINVAL;
 
@@ -277,6 +279,7 @@ if (chip == 0) {
   pr_err("cannot allocate memory!\n");
   return -ENOMEM;
 }
+pr_err("register chip=%08x api=%08x\n",chip,api);
 chip->dev=dev;
 mutex_init(&chip->mutx);
 chip->api=api;

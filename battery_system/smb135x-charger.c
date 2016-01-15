@@ -3018,6 +3018,9 @@ chip->core.enable_charge_fn=smb135x_enable_charge;
 chip->core.set_otg_mode_fn=smb135x_set_otg_mode;
 chip->core.ext_name_battery="battery";
 chip->core.ad_usb.name="usb";
+chip->core.ad128.name="";
+chip->core.ad144.name="";
+chip->core.ad160.name="";
 
 rc=charger_core_register(&client->dev,&chip->core);
 if (rc != 0) {
