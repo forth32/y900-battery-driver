@@ -235,12 +235,14 @@ int rc;
 
 if (self == 0) return -EINVAL;
 switch(event) {
-  case 0:
-    chip->charging_done=1;
   case 1:
+    // информация об окончании зарядки
+    chip->charging_done=1;
   case 2:
-    return 0;
   case 3:
+    return 0;
+    // установка нового зарядного тока
+  case 4: 
     if (params == 0) return 0;
     ma=*((int*)params);
     if (ma == chip->ibat_max) return 0;

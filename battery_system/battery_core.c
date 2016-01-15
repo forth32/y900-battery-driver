@@ -572,7 +572,11 @@ switch (bat->status) {
     new_status=POWER_SUPPLY_STATUS_UNKNOWN;
 }
 
-// далее следует вызов charger+40 - .text:C0397E8C
+//  сообщаем заряднику о текущем ограничении зарядного тока
+if (bat->charger != 0) {
+  capi=bat->charger->api;
+  if (capi->notify_event != 0) (*capi->notify_event)(capi,4,bat->current_max);
+}
 
 
 
