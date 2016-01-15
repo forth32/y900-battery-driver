@@ -416,6 +416,7 @@ void battery_core_monitor_work(struct work_struct *work) {
   
 
 int data[8];  
+
 struct battery_interface* api;
 struct delayed_work* dw=container_of(work, struct delayed_work, work);
 struct battery_core_interface* bat=container_of(dw, struct battery_core_interface, work);  
@@ -428,6 +429,12 @@ int volt;
 int new_status;  // R6
 int cap;
 int current_max;
+int integrated_volt;
+int dv,cm;
+
+// Хранилище для вычисления среднего напряжения между циклами монитора (интегратор напряжения)
+static int sum,count,average,calculate_initialized;
+
 
 if (!bat->ws.active) __pm_stay_awake(&bat->ws);
 api=bat->api;
@@ -476,13 +483,13 @@ if (api-> get_vntc_proc != 0) {
 }
 donetemp:
 
+//------------------------------------------------------------------------------------------------
 // Температуру измерили, теперь измеряем напряжение
 
 cap=99;
-
 memset(data,0,32);
 
-// приостанавливаем зарядку и ждем стабилизации напряжения
+// приостанавливаем зарядку и ждем стабилизации напряжения на батарее
 if (bat->charger == 0) bat->charger=charger_core_get_charger_interface_by_name(bat->bname);
 if (bat->charger != 0) {
   capi=bat->charger->api;
@@ -505,7 +512,7 @@ for (i=0;i<8;i++) {
     pr_err("failed to measure battery voltage, rc=%d\n",rc);
     goto no_vbat_proc;
   }  
-  (*arm_delay_ops.const_udelay)(1073740);
+  (*arm_delay_ops.const_udelay)(1073740);  // задержка на время нового преобразования
 }
 
 // возобновляем зарядку
@@ -514,15 +521,58 @@ if (bat->charger != 0) {
   if (capi->resume_charging != 0) (*capi->resume_charging)(capi);
 }
 
+// усредняем результат 8 выборок
 volt=battery_core_calculate_average(data);
+// в тестовом режиме берем установленное напряжение вместо измеренного
+if (bat->test_mode != 0) volt=bat->volt_now;
+
+// **** Интегратор напряжения аккумулятора *** (та самая математика, которой я так боялся)
+
+if (bat-> present == 1) {
+ // Если флаг present поднят - вычисляем интегральное значение за 32 выборки
+ if (calculate_initialized == 0) {
+   // начальный этап накопления данных интегратора - первые 7 выборок считаем просто среднее
+   count++;
+   sum+=volt;
+   average=sum/count;
+   if (count>7) calculate_initialized=1;
+ }
+ else {
+   // Все последующий выборки, начиная от 8 - учитываем предыдущий хвост
+   if (bat->status == POWER_SUPPLY_STATUS_CHARGING) dv=32;
+   else  dv=((count<32) ? 32 : count);
+   count++;
+   cm=dv*volt+average*(32-dv);
+   if (cm<0) cm+=31;
+   sum+=cm/32;
+   average=sum/count;
+   if (count > 63) {
+     // сделаны 63 выборки - усредняем результат, представляем его как первую выборку новго цикла
+     sum=average*8;
+     count=8;
+     average=sum/8;
+   }
+ }
+ integrated_volt=average;
+}
+else {
+ // Если флаг present опущен - делаем сброс переменных интегратора
+ sum=0;
+ count=0;
+ average=0;
+ calculate_initialized=0;
+ integrated_volt=volt;
+} 
+  
+
 
 for (i=0;i<bat->capsize;i++) {
   if ((volt/1000>bat->cap[i].vmin) && (volt/1000<bat->cap[i].vmax)) cap=bat->cap[i].percent;
 }
 
 mutex_lock(&bat->lock);
-bat->volt_now=data[7];
-bat->volt_avg=volt;
+bat->volt_now=volt;
+bat->volt_avg=integrated_volt;
 bat->capacity=cap;
 mutex_unlock(&bat->lock);
 
