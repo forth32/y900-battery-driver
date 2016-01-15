@@ -994,7 +994,7 @@ bat->temp_high_poweroff=65;
 bat->api=api;
 api->bat=bat;
 
-//bat->charger=charger_core_get_charger_interface_by_name(api->bname);
+bat->charger=charger_core_get_charger_interface_by_name(api->bname);
 api->x_timer_suspend_proc=0;
 api->alarm_wakeup_proc=battery_core_wakeup;
 api->timer_resume_proc=0;
