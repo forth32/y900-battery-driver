@@ -41,9 +41,13 @@ union power_supply_propval prop;
 
 
 if (ada == 0) return -EPERM;
-if (ada->name == 0) return 0;
-pr_err("ada->name = %08x \n",ada->name);
-//if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
+// для безымянных адаптеров
+if (ada->name == 0) {
+  ada->max_ma=0;
+  return 0;
+}  
+// если имя имеется - ищем power supply* по имени.
+if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
 if (ada->psy != 0) {
   psy=ada->psy;
   rc=psy->get_property(psy,POWER_SUPPLY_PROP_ONLINE,&prop);
@@ -75,13 +79,13 @@ return 0;
 //********************************************
 int charger_core_suspend_charging(void *self) {
   
-struct charger_core_interface* chip=self;
-struct charger_interface* api;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 int rc;
 
-if (chip == 0) return -EINVAL;
-api=chip->api;
-if (api == 0) return 0;
+if (self == 0) return -EINVAL;
+chip=api->self;
+if (chip == 0) return 0;
 if (api->enable_charge_fn == 0) return 0;
 if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return -EINVAL; 
 if (chip->charging_suspend != 0) return -EINVAL;
@@ -97,13 +101,13 @@ return rc;
 //********************************************
 int charger_core_resume_charging(void *self) {
   
-struct charger_core_interface* chip=self;
-struct charger_interface* api;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 int rc;
   
-if (chip == 0) return -EINVAL;
-api=chip->api;
-if (api == 0) return 0;
+if (self == 0) return -EINVAL;
+chip=api->self;
+if (chip == 0) return 0;
 if (api->enable_charge_fn == 0) return 0;
 if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return -EINVAL; 
 if (chip->charging_suspend == 0) return -EINVAL;
@@ -128,7 +132,7 @@ int enable;
 
 if ((self == 0) || (mA<0)) return -EINVAL;
 chip=api->self;
-pr_err(" setchg: chip=%08x  api=%08x\n",chip,api);
+//pr_err(" setchg: chip=%08x  api=%08x\n",chip,api);
 if (api == 0) return -EINVAL;
 if (api->enable_charge_fn == 0) return -EINVAL;
 
@@ -178,9 +182,12 @@ return 0;
 //********************************************
 int charger_core_get_charging_current(void *self, int *mA) {
   
-struct charger_core_interface* chip=self;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 
-if ((chip == 0) || (mA == 0)) return -EINVAL;
+if ((self == 0) || (mA == 0)) return -EINVAL;
+chip=api->self;
+if (chip == 0) return -EINVAL;
 *mA=chip->ichg_now;
 return 0;
 }
@@ -190,12 +197,12 @@ return 0;
 //************************************************
 int charger_core_get_charger_info(void *self, struct charger_info *info) {
   
-struct charger_core_interface* chip=self;
-struct charger_interface* api;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 
-if ((chip == 0) || (info == 0)) return -EINVAL;
-api=chip->api;
-if (api == 0) return -EINVAL;
+if ((self == 0) || (info == 0)) return -EINVAL;
+chip=api->self;
+if (chip == 0) return -EINVAL;
 
 info->charger_status=chip->charging_state;
 info->ichg_now=chip->ichg_now;
@@ -230,12 +237,15 @@ return -EPERM;
 //********************************************
 int charger_core_notify_event(void *self, int event, void *params) {
   
-struct charger_core_interface* chip=self;
-struct charger_interface* api;
+struct charger_interface* api=self;
+struct charger_core_interface* chip;
 int ma;
 int rc;
 
 if (self == 0) return -EINVAL;
+chip=api->self;
+if (chip == 0) return -EINVAL;
+
 switch(event) {
   case 1:
     // информация об окончании зарядки
@@ -250,7 +260,6 @@ switch(event) {
     if (ma == chip->ibat_max) return 0;
     chip->ibat_max=ma;
     if (chip->charging_state != POWER_SUPPLY_STATUS_CHARGING) return 0;
-    api=chip->api;
     if (api->set_charging_current == 0) return 0;
     rc=api->set_charging_current(api,ma);    
     if (rc != 0) pr_err("failed to adjust charging current %dmA to %dmA\n",chip->ichg_now,chip->ibat_max);
@@ -279,7 +288,7 @@ if (chip == 0) {
   pr_err("cannot allocate memory!\n");
   return -ENOMEM;
 }
-pr_err("register chip=%08x api=%08x\n",chip,api);
+//pr_err("register chip=%08x api=%08x\n",chip,api);
 chip->dev=dev;
 mutex_init(&chip->mutx);
 chip->api=api;
