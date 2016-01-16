@@ -429,8 +429,10 @@ int volt;
 int new_status;  // R6
 int cap;
 int current_max;
-int integrated_volt;
+int integrated_volt, mvavg;
 int dv,cm;
+int bpr,offset,capupdate,hyst;
+int monperiod;
 
 // Хранилище для вычисления среднего напряжения между циклами монитора (интегратор напряжения)
 static int sum,count,average,calculate_initialized;
@@ -563,19 +565,59 @@ else {
  calculate_initialized=0;
  integrated_volt=volt;
 } 
-  
 
+// **** Определение заряда аккумулятора 
 
-for (i=0;i<bat->capsize;i++) {
-  if ((volt/1000>bat->cap[i].vmin) && (volt/1000<bat->cap[i].vmax)) cap=bat->cap[i].percent;
+mvavg=integrated_volt/1000; // напряжение в mV
+
+// если таблицы процентов не существует
+if (bat-> cap == 0) {
+  pr_err("Capacity convert table is NULL!\n");
+  cap=-22;
+  capupdate=1;
+  goto nocap;
+}  
+// выход за границы таблицы
+
+else if  (mvavg < bat->cap[0].vmin)              cap=0;
+else if  (mvavg > bat->cap[bat->capsize-1].vmin) cap=100;
+else {
+ // напряжение попадает внутрь таблицы - ищем строку таблицы
+ for (i=0;i<bat->capsize;i++) {
+   if (bat->status == POWER_SUPPLY_STATUS_DISCHARGING) offset=0;
+   else offset=bat->cap[i].offset;
+   if (((mvavg+offset) > bat->cap[i].vmin) && ((mvavg+offset) <= bat->cap[i].vmax)) break;
+ }
+ //   смещение V от vmin        разность % между строками                       разность напряжений между строками
+ bpr=(mvavg-bat->cap[i].vmin)*(bat->cap[i+1].percent-bat->cap[i].percent)*10/(bat->cap[i+1].vmin-bat->cap[i].vmin);
+ cap=bpr/10;
+ if ((bpr%10)>4) cap++;
+ if (cap > bat->cap[i+1].percent) cap=bat->cap[i+1].percent;
 }
+
+// Провряем, не попадает ли напряжение на границу перехода процентов
+if (bat->test_mode != 0) capupdate=1;
+else {
+  capupdate=0;
+  for (i=bat->capsize-1;i>0;i++) {
+    if (bat->capacity > bat->cap[i-1].percent) break;
+  }
+  hyst=bat->cap[i].hysteresis;
+  if ((mvavg < (bat->cap[i].vmin-hyst)) || (mvavg > (bat->cap[i].vmax+hyst))) capupdate=1;
+}
+
+nocap:
 
 mutex_lock(&bat->lock);
 bat->volt_now=volt;
 bat->volt_avg=integrated_volt;
-bat->capacity=cap;
+if (capupdate) bat->capacity=cap;
 mutex_unlock(&bat->lock);
 
+if (bat->debug_mode) {
+  pr_info("vbat(meas/avg)=%dmV/%dmV, capacity(%d%%) has %s %s\n",bat->volt_now/1000,mvavg,
+	  bat->capacity,capupdate?"changed":"not changed",bat->test_mode?"at test mode":"");
+}  
 
 no_vbat_proc:
 
@@ -633,7 +675,9 @@ if (bat->charger != 0) {
 
 
 if (new_status>3) battery_core_external_power_changed(&bat->psy);
-queue_delayed_work_on(1,bat->mon_queue,&bat->work ,msecs_to_jiffies(bat->chg_mon_period));
+if (bat->status == POWER_SUPPLY_STATUS_DISCHARGING) monperiod=bat->dischg_mon_period;
+    else monperiod=bat->chg_mon_period;
+queue_delayed_work_on(1,bat->mon_queue,&bat->work ,msecs_to_jiffies(monperiod));
 if (bat->ws.active != 0) __pm_relax(&bat->ws);
 }
 

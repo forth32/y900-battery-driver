@@ -35,8 +35,7 @@ static int registered_count=0;
 //********************************************
 int charger_core_get_adapter(struct adapter *ada) {
 
-int online,rc,current_max,scope;  
-struct power_supply* psy;  
+int online,rc,current_max,scope,voltage_now;  
 union power_supply_propval prop;
 
 
@@ -49,16 +48,18 @@ if (ada->name == 0) {
 // если имя имеется - ищем power supply* по имени.
 if (ada->psy == 0) ada->psy=power_supply_get_by_name(ada->name);
 if (ada->psy != 0) {
-  psy=ada->psy;
-  rc=psy->get_property(psy,POWER_SUPPLY_PROP_ONLINE,&prop);
+  rc=ada->psy->get_property(ada->psy,POWER_SUPPLY_PROP_ONLINE,&prop);
   if (rc == 0) online=prop.intval;
-  else online=0;
-  
-  rc=psy->get_property(psy,POWER_SUPPLY_PROP_CURRENT_MAX,&prop);
+  else  online=0;
+  rc=ada->psy->get_property(ada->psy,POWER_SUPPLY_PROP_CURRENT_MAX,&prop);
   if (rc != 0) current_max=0;
-  else current_max=prop.intval/1000;
+  else    current_max=prop.intval/1000;
+
+  rc=ada->psy->get_property(ada->psy,POWER_SUPPLY_PROP_VOLTAGE_NOW,&prop);
+  if (rc != 0) voltage_now=0;
+  else voltage_now=prop.intval/1000;
   
-  rc=psy->get_property(psy,62,&prop);
+  rc=ada->psy->get_property(ada->psy,POWER_SUPPLY_PROP_SCOPE,&prop);
   if (rc == 0) scope=prop.intval;
   else scope=0;
   
@@ -67,7 +68,8 @@ if (ada->psy != 0) {
 else current_max=0;
 ada->max_ma=current_max;
 if (ada->name == 0) return 0;
-pr_info("adapter[%s]: scope=%d, online=%d, current_max=%dmA, current_now=%dmA",ada->name,scope,online,current_max,0);
+if (strlen(ada->name) != 0) 
+   pr_info("adapter[%s]: psy=%08x scope=%d, online=%d, current_max=%dmA, voltage_now=%dmV\n",ada->name,ada->psy,scope,online,current_max,voltage_now);
 return 0;
 }
 
